@@ -45,7 +45,13 @@ state.albums.forEach((album,i)=>album.entries.forEach((entry,r)=>{
 const replayResponse=await fetch(imageUrl+'&replay=1',{headers:{Authorization:'Bearer '+tokens[0]}});
 assert.equal(replayResponse.status,200);assert.deepEqual(await replayResponse.json(),recording);
 assert.equal((await fetch(imageUrl+'&replay=1',{headers:{Authorization:'Bearer '+tokens[3]}})).status,401);
-await post(1,'restart',{},403);state=await post(0,'restart');assert.equal(state.phase,'lobby');
+const schedule=state.replaySchedule;assert.equal(schedule.steps.length,9);
+for(const player of [1,2])assert.deepEqual((await get(player)).replaySchedule,schedule);
+await post(1,'restart',{},403);await post(0,'restart',{},409);
+console.log('PASS: all three players share one replay schedule; early restart rejected. Waiting for automatic replay to finish.');
+while(Date.now()<schedule.endsAt+500)await new Promise(resolve=>setTimeout(resolve,Math.min(1000,schedule.endsAt+500-Date.now())));
+assert.deepEqual((await get(0)).replaySchedule,schedule);
+state=await post(0,'restart');assert.equal(state.phase,'lobby');
 await post(0,'leave');state=await get(1);assert.equal(state.host,seats[1]);assert.equal(state.players.length,2);
 console.log('PASS: concurrent 3-player full game, rotation, image + stroke replay storage, three rerolls, answer isolation, auth, stale writes, restart, host transfer.');
 console.log('QA_ROOM='+code);

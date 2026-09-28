@@ -1,5 +1,6 @@
 "use client";
 import {forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
+import type {CSSProperties} from 'react';
 import {Pencil,Eraser,Undo2,Redo2,Trash2,Check,Maximize2,Minimize2} from 'lucide-react';
 import {Slider} from '@/components/ui/slider';
 import {BOARD_WIDTH,BOARD_HEIGHT,MAX_ACTIONS,MAX_POINTS,drawingState,paintDrawing,paintStroke} from '@/lib/drawing';
@@ -10,21 +11,22 @@ const names=['墨黑','黑色','灰色','浅灰','白色','深红','红色','珊
 export const DrawingCanvas=forwardRef<CanvasHandle,{draftKey:string;compact?:boolean;disabled?:boolean}>(function DrawingCanvas({draftKey,compact,disabled},ref){
  const canvas=useRef<HTMLCanvasElement>(null),active=useRef<Stroke|null>(null),pointer=useRef<number|null>(null),actionsRef=useRef<DrawAction[]>([]);
  const [actions,setActions]=useState<DrawAction[]>([]),[color,setColor]=useState(colors[0]),[width,setWidth]=useState(6),[eraser,setEraser]=useState(false),[expanded,setExpanded]=useState(false),[notice,setNotice]=useState('');
+ const [size,setSize]=useState({width:BOARD_WIDTH,height:BOARD_HEIGHT});
  const {strokes,redo}=drawingState(actions);
  function paint(){const ctx=canvas.current?.getContext('2d');if(ctx){paintDrawing(ctx,drawingState(actionsRef.current).strokes);if(active.current)paintStroke(ctx,active.current)}}
- function save(next:DrawAction[]){actionsRef.current=next;setActions(next);try{sessionStorage.setItem(draftKey,JSON.stringify({version:1,actions:next}))}catch{setNotice('浏览器草稿空间不足，请保持页面打开并及时提交。')}}
- useEffect(()=>{let next:DrawAction[]=[];try{const raw=sessionStorage.getItem(draftKey);if(raw){const data=JSON.parse(raw);next=Array.isArray(data)?data.map((s:Stroke)=>s.clear?{type:'clear'}:{type:'stroke',stroke:{...s,color:s.color==='#fff'?'#ffffff':s.color}}):data.actions||[]}}catch{}actionsRef.current=next;setActions(next);active.current=null;pointer.current=null;},[draftKey]);
- useEffect(()=>{paint()},[actions,expanded]);
+ function save(next:DrawAction[]){actionsRef.current=next;setActions(next);try{sessionStorage.setItem(draftKey,JSON.stringify({version:1,width:size.width,height:size.height,actions:next}))}catch{setNotice('浏览器草稿空间不足，请保持页面打开并及时提交。')}}
+ useEffect(()=>{let next:DrawAction[]=[];let dimensions=matchMedia('(max-width:760px) and (orientation:portrait)').matches?{width:600,height:800}:{width:BOARD_WIDTH,height:BOARD_HEIGHT};try{const raw=sessionStorage.getItem(draftKey);if(raw){const data=JSON.parse(raw);dimensions={width:data.width||BOARD_WIDTH,height:data.height||BOARD_HEIGHT};next=Array.isArray(data)?data.map((s:Stroke)=>s.clear?{type:'clear'}:{type:'stroke',stroke:{...s,color:s.color==='#fff'?'#ffffff':s.color}}):data.actions||[];if(!next.length)dimensions=matchMedia('(max-width:760px) and (orientation:portrait)').matches?{width:600,height:800}:dimensions}}catch{}setSize(dimensions);actionsRef.current=next;setActions(next);active.current=null;pointer.current=null;},[draftKey]);
+ useEffect(()=>{paint()},[actions,expanded,size]);
  useEffect(()=>{if(!expanded)return;const before=document.body.style.overflow;document.body.style.overflow='hidden';const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setExpanded(false)};window.addEventListener('keydown',key);return()=>{document.body.style.overflow=before;window.removeEventListener('keydown',key)}},[expanded]);
  function allActions(){return active.current?[...actionsRef.current,{type:'stroke' as const,stroke:active.current}]:actionsRef.current}
- useImperativeHandle(ref,()=>({image:()=>{paint();return canvas.current?.toDataURL('image/png')||''},recording:()=>({version:1,actions:allActions()}),hasDrawing:()=>{const s=drawingState(allActions()).strokes;return s.some((a,i)=>!a.clear&&a.color!=='#ffffff'&&!s.slice(i+1).some(b=>b.clear))}}));
- function point(e:React.PointerEvent<HTMLCanvasElement>){const r=e.currentTarget.getBoundingClientRect();return{x:Math.round(Math.max(0,Math.min(BOARD_WIDTH,(e.clientX-r.left)*BOARD_WIDTH/r.width))*10)/10,y:Math.round(Math.max(0,Math.min(BOARD_HEIGHT,(e.clientY-r.top)*BOARD_HEIGHT/r.height))*10)/10}}
+ useImperativeHandle(ref,()=>({image:()=>{paint();return canvas.current?.toDataURL('image/png')||''},recording:()=>({version:1,width:size.width,height:size.height,actions:allActions()}),hasDrawing:()=>{const s=drawingState(allActions()).strokes;return s.some((a,i)=>!a.clear&&a.color!=='#ffffff'&&!s.slice(i+1).some(b=>b.clear))}}));
+ function point(e:React.PointerEvent<HTMLCanvasElement>){const r=e.currentTarget.getBoundingClientRect();return{x:Math.round(Math.max(0,Math.min(size.width,(e.clientX-r.left)*size.width/r.width))*10)/10,y:Math.round(Math.max(0,Math.min(size.height,(e.clientY-r.top)*size.height/r.height))*10)/10}}
  function finish(){if(active.current){const stroke=active.current;active.current=null;pointer.current=null;save([...actionsRef.current,{type:'stroke',stroke}])}}
  function edit(action:DrawAction){if(disabled)return;if(actionsRef.current.length>=MAX_ACTIONS){setNotice('这幅画的操作次数已满，请提交当前作品。');return}save([...actionsRef.current,action])}
  const usedPoints=useRef(0);
- return <div className={`drawing ${compact?'compact':''} ${expanded?'expanded':''}`}>
+ return <div style={{'--board-ratio':size.width/size.height} as CSSProperties} className={`drawing ${compact?'compact':''} ${expanded?'expanded':''}`}>
   <div className="canvas-heading"><span>{compact?'随手画画':'你的画布'}{expanded&&' · 按 Esc 收起'}</span><button type="button" className="text-button" onClick={()=>setExpanded(v=>!v)}>{expanded?<Minimize2 size={17}/>:<Maximize2 size={17}/>}<span>{expanded?'收起画布':'放大画布'}</span></button></div>
-  <div className="canvas-wrap"><canvas ref={canvas} width={BOARD_WIDTH} height={BOARD_HEIGHT} aria-label="画板，使用鼠标或手指绘画"
+  <div className="canvas-wrap"><canvas ref={canvas} width={size.width} height={size.height} aria-label="画板，使用鼠标或手指绘画"
    onPointerDown={e=>{if(disabled||pointer.current!==null||e.button!==0)return;usedPoints.current=actionsRef.current.reduce((n,a)=>n+(a.type==='stroke'?a.stroke.points.length:0),0);if(usedPoints.current>=MAX_POINTS||actionsRef.current.length>=MAX_ACTIONS){setNotice('这幅画的笔画已满，请提交当前作品。');return}e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);pointer.current=e.pointerId;active.current={color:eraser?'#ffffff':color,width:eraser?width*4:width,points:[point(e)]};paint()}}
    onPointerMove={e=>{const s=active.current;if(!s||pointer.current!==e.pointerId)return;const p=point(e),last=s.points[s.points.length-1];if(Math.hypot(p.x-last.x,p.y-last.y)<1.5)return;if(usedPoints.current+s.points.length>=MAX_POINTS){finish();setNotice('这幅画的笔画已满，请提交当前作品。');return}s.points.push(p);paint()}}
    onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}/>

@@ -2,6 +2,14 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {validateRecording,drawingState,replayStrokes,actionUnits} from '../lib/drawing.ts';
 const pen={type:'stroke',stroke:{color:'#2548f4',width:6,points:[{x:0,y:10},{x:25,y:30},{x:80,y:50}]}};
+test('portrait drawings preserve lower-canvas strokes and validate their own dimensions',()=>{
+ const actions=[{...pen,stroke:{...pen.stroke,points:[{x:300,y:799}]}}];
+ const portrait=validateRecording({version:1,width:600,height:800,actions});
+ assert.equal(portrait.height,800);assert.equal(replayStrokes(portrait.actions,100)[0].points[0].y,799);
+ assert.throws(()=>validateRecording({version:1,actions}));
+ for(const width of [0,-1,1601,1.5,Infinity])assert.throws(()=>validateRecording({version:1,width,height:800,actions}));
+ assert.throws(()=>validateRecording({version:1,width:600,height:600,actions}));
+});
 test('replay preserves erasing, undo, redo and reversible clear',()=>{
  const eraser={type:'stroke',stroke:{...pen.stroke,color:'#ffffff',width:24}};
  const actions=[pen,eraser,{type:'undo'},{type:'redo'},{type:'clear'},{type:'undo'}];

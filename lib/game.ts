@@ -1,6 +1,7 @@
-export type Entry = { kind: 'text' | 'draw'; text?: string; image?: string; replay?: boolean; skipped?: boolean; author: string };
+import {makeReplaySchedule,REPLAY_LEAD_MS} from './replay-clock.ts';
+export type Entry = { kind: 'text' | 'draw'; text?: string; image?: string; replay?: boolean; replayMs?:number; width?:number; height?:number; skipped?: boolean; author: string };
 export type Player = { id: string; name: string; secret: string; left?: boolean };
-export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}> };
+export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number };
 const wordBank = [
  '一只正在加班的企鹅','骑着恐龙去买奶茶','月亮偷偷吃蛋糕','在太空里涮火锅','一只害怕老鼠的猫','西瓜在健身房举铁',
  '穿着雨衣的太阳','机器人第一次煮面','章鱼同时刷八颗牙','熊猫骑独轮车','长颈鹿打领带','小狗在云朵上睡觉',
@@ -17,12 +18,13 @@ function promptDeck(){const deck=[...wordBank];for(let i=deck.length-1;i>0;i--){
 export class GameError extends Error { constructor(message: string, public status = 400) {super(message)} }
 export function kind(round:number):'text'|'draw' { return round % 2 ? 'draw' : 'text' }
 export function advance(room:Room, now=Date.now()) {
+  if(room.phase==='reveal'&&!room.replayStartsAt){room.replayStartsAt=now+REPLAY_LEAD_MS;return true}
   if(room.phase !== 'play') return false;
   const row = room.entries[room.round];
   let changed = false;
   room.players.forEach((p,i)=>{if(!row[i] && (p.left || now>=room.deadline)){row[i]={kind:kind(room.round),author:p.id,skipped:true};changed=true}});
   if(row.filter(Boolean).length===room.players.length){
-    if(room.round+1>=room.players.length) room.phase='reveal';
+    if(room.round+1>=room.players.length){room.phase='reveal';room.replayStartsAt=now+REPLAY_LEAD_MS}
     else {room.round++;room.deadline=now+room.duration*1000}
     changed=true;
   }
@@ -34,7 +36,7 @@ export function view(room:Room, secret:string, version:number) {
   const me=room.players[index];
   const offer=room.phase==='play'&&room.round===0?room.prompts?.[me.id]:undefined;
   const previous=room.phase==='play' && room.round>0 ? room.entries[room.round-1][(index-1+room.players.length)%room.players.length] : null;
-  return {code:room.code,host:room.host,me:me.id,phase:room.phase,game:room.game,round:room.round,total:room.players.length,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,choices:offer?offer.deck.slice(offer.batch*3,offer.batch*3+3):null,choiceSet:offer?.batch??0,rerollsLeft:offer?3-offer.batch:0,submitted:!!room.entries[room.round]?.[index],players:room.players.map((p,i)=>({id:p.id,name:p.name,left:!!p.left,submitted:!!room.entries[room.round]?.[i]})),albums:room.phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+r)%room.players.length])})):null};
+  return {code:room.code,host:room.host,me:me.id,phase:room.phase,game:room.game,round:room.round,total:room.players.length,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,replaySchedule:room.phase==='reveal'&&room.replayStartsAt?makeReplaySchedule(room.entries,room.replayStartsAt):null,choices:offer?offer.deck.slice(offer.batch*3,offer.batch*3+3):null,choiceSet:offer?.batch??0,rerollsLeft:offer?3-offer.batch:0,submitted:!!room.entries[room.round]?.[index],players:room.players.map((p,i)=>({id:p.id,name:p.name,left:!!p.left,submitted:!!room.entries[room.round]?.[i]})),albums:room.phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+r)%room.players.length])})):null};
 }
 export function act(room:Room, secret:string, body:Record<string,unknown>, now=Date.now()) {
   const index=room.players.findIndex(p=>p.secret===secret);
@@ -62,6 +64,7 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     const duration=Number(body.duration);
     if(![60,90,120,180].includes(duration)) throw new GameError('请选择有效的回合时长。');
     room.duration=duration;room.phase='play';room.round=0;room.game=crypto.randomUUID();room.deadline=now+duration*1000;
+    delete room.replayStartsAt;
     room.prompts=Object.fromEntries(room.players.map(p=>[p.id,{deck:promptDeck(),batch:0}]));
     room.entries=Array.from({length:room.players.length},()=>Array(room.players.length).fill(null));return;
   }
@@ -75,7 +78,8 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
   if(action==='restart') {
     if(room.host!==player.id) throw new GameError('只有房主可以开启下一局。',403);
     if(room.phase!=='reveal') throw new GameError('请先完成这一局。',409);
-    room.players=room.players.filter(p=>!p.left);room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;return;
+    if(!room.replayStartsAt||now<makeReplaySchedule(room.entries,room.replayStartsAt).endsAt)throw new GameError('大家正在同步观看回放，请等放映结束。',409);
+    room.players=room.players.filter(p=>!p.left);room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;delete room.replayStartsAt;return;
   }
   if(action==='submit') {
     if(room.phase!=='play' || body.game!==room.game || body.round!==room.round) throw new GameError('这一轮已经结束，正在同步下一轮。',409);
@@ -89,7 +93,8 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     } else {
       if(typeof body.imageKey!=='string') throw new GameError('画作还没有保存，请重试。');
       entry.image=body.imageKey;
-      if(body.hasReplay===true)entry.replay=true;
+      if(body.hasReplay===true){entry.replay=true;entry.replayMs=Number(body.replayMs)||6000}
+      if(typeof body.boardWidth==='number'&&typeof body.boardHeight==='number'){entry.width=body.boardWidth;entry.height=body.boardHeight}
     }
     room.entries[room.round][index]=entry;advance(room,now);return;
   }
