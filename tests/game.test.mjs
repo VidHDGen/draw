@@ -26,3 +26,15 @@ test('each player has three private choices and exactly three persistent rerolls
  assert.throws(()=>act(r,'s1',{action:'reroll',game:r.game,choiceSet:3}));
  assert.equal(r.entries[0][0].text,choice);
 });
+
+test('prefetched choices belong only to the viewer and cannot be submitted before reroll is saved',()=>{
+ const r=room();act(r,'s1',{action:'start',duration:60});
+ const first=view(r,'s1',0);assert.deepEqual(first.nextChoices,r.prompts.a.deck.slice(3,6));
+ assert.ok(first.nextChoices.every(word=>!r.prompts.b.deck.includes(word)));
+ assert.throws(()=>act(r,'s1',{action:'submit',game:r.game,round:0,text:first.nextChoices[0]}));
+ act(r,'s1',{action:'reroll',game:r.game,choiceSet:0});
+ assert.deepEqual(view(r,'s1',1).choices,first.nextChoices);
+ act(r,'s1',{action:'reroll',game:r.game,choiceSet:1});
+ act(r,'s1',{action:'reroll',game:r.game,choiceSet:2});
+ assert.equal(view(r,'s1',3).nextChoices,null);
+});
