@@ -3,9 +3,32 @@
   "name": "draw-relay",
   "main": "vinext/server/fetch-handler",
   "compatibility_date": "2026-05-15",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
-  "observability": {"enabled": true},
-  "d1_databases": [{"binding":"DB","database_name":"draw-relay-db","database_id":"00000000-0000-4000-8000-000000000000","migrations_dir":"drizzle"}],
-  "r2_buckets": [{"binding":"BUCKET","bucket_name":"draw-relay-images"}]
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "draw-relay-db",
+      "database_id": "d5d29565-f842-422b-980e-945cd32f0db2",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "draw-relay-images"
+    }
+  ],
+  "routes": [
+    {
+      "custom_domain": true,
+      "pattern": "draw.vidhdgen.dpdns.org",
+      "zone_name": "vidhdgen.dpdns.org"
+    }
+  ]
 }

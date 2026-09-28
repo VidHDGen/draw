@@ -25,6 +25,8 @@ npm start -- --port 8787
 
 ## 首次部署到自己的 Cloudflare
 
+本仓库已经为 VidHDGen 的账户创建了 `draw-relay-db` 和 `draw-relay-images`，配置中已填入实际数据库 ID 和游戏域名。该账户后续更新只需登录后运行 `npm run deploy`，无需重复创建资源。以下步骤供迁移到另一个账户时参考；请同时将 `routes` 改为你自己的域名，或先移除它。
+
 1. 执行官方登录命令，在浏览器完成授权：
 
    ```sh
@@ -39,7 +41,7 @@ npm start -- --port 8787
    npx wrangler r2 bucket create draw-relay-images
    ```
 
-3. 将创建数据库时返回的 `database_id` 填入 `wrangler.jsonc`，替换全零占位值。桶名称应与 `r2_buckets[0].bucket_name` 一致。不要开启桶的公开访问，游戏接口会验证玩家身份。
+3. 将创建数据库时返回的 `database_id` 填入 `wrangler.jsonc`。桶名称应与 `r2_buckets[0].bucket_name` 一致。不要开启桶的公开访问，游戏接口会验证玩家身份。
 
 4. 发布：
 
@@ -49,7 +51,7 @@ npm start -- --port 8787
 
    此命令先构建，再应用生产数据库迁移，最后上传 Worker 和静态资源。打开输出的 `workers.dev` 地址，验证创建房间和多人对局。
 
-5. 在 Cloudflare 的 Workers & Pages → `draw-relay` → Settings → Domains & Routes 添加 Custom Domain：`draw.vidhdgen.dpdns.org`。旧的 `draw` CNAME 若还指向其他平台，需要先移除这条冲突记录，再绑定 Worker。Cloudflare 会为新绑定管理 DNS 和 HTTPS。不要修改根域名隧道、MX、SPF 或 DKIM 记录。
+5. `wrangler.jsonc` 的 `routes` 已配置 Custom Domain：`draw.vidhdgen.dpdns.org`，发布时会自动绑定。旧的 `draw` CNAME 若还指向其他平台，需要先移除这条冲突记录，再重新发布。Cloudflare 会为新绑定管理 DNS 和 HTTPS。不要修改根域名隧道、MX、SPF 或 DKIM 记录。
 
 域名迁移只影响访问入口，旧平台的房间与画作不会自动迁移；请在新站重新创建房间。迁移后实际可访问性仍需使用朋友的网络验证。
 
@@ -59,12 +61,12 @@ npm start -- --port 8787
 
 | 类型 | 名称 | 内容 |
 | --- | --- | --- |
-| Secret | `CLOUDFLARE_API_TOKEN` | 只授权目标账户部署 Workers、写入 D1，以及读取部署所需 R2 信息的 Cloudflare API Token |
+| Secret | `CLOUDFLARE_API_TOKEN` | 授权目标账户部署 Workers、写入 D1、访问部署所需 R2 信息，以及目标域名的 Zone Read / Workers Routes 权限的 Cloudflare API Token |
 | Secret | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID |
 | Variable | `CLOUDFLARE_D1_DATABASE_ID` | 已创建的 D1 数据库 UUID |
 | Variable，可选 | `CLOUDFLARE_R2_BUCKET_NAME` | 默认 `draw-relay-images` |
 
-密钥仅在 Cloudflare 和 GitHub 的官方界面填写，不要提交进代码或聊天。进入 Actions → Deploy drawing relay → Run workflow 发布。域名建议在 Cloudflare 控制台管理，不需要给部署令牌额外的 DNS 编辑权限。
+密钥仅在 Cloudflare 和 GitHub 的官方界面填写，不要提交进代码或聊天。进入 Actions → Deploy drawing relay → Run workflow 发布。GitHub Actions 需要自行配置这些密钥；本机的 Wrangler 登录不会自动同步到 GitHub。
 
 ## 验证
 
