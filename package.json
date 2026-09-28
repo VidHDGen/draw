@@ -11,7 +11,7 @@
     "start": "node scripts/cloudflare.mjs preview",
     "deploy": "node scripts/cloudflare.mjs deploy",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
-    "test": "node --experimental-transform-types --test tests/game.test.mjs",
+    "test": "node --experimental-transform-types --test tests/game.test.mjs tests/drawing.test.mjs",
     "db:local": "node scripts/cloudflare.mjs migrate-local",
     "db:generate": "drizzle-kit generate",
     "cloudflare:configure": "node scripts/cloudflare.mjs configure"

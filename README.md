@@ -93,3 +93,13 @@ node tests/e2e.mjs
 - 代码使用 React / Vinext / Cloudflare Workers。生产配置位于 `wrangler.jsonc`，数据库迁移位于 `drizzle/`。
 
 参考：[Cloudflare 自定义域名](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)、[R2 对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
+
+## 新版选词与动画回放
+
+- 绘画回合使用更宽的画布，支持放大模式；手机横屏能获得更大的绘画空间。
+- 32 种预设颜色和自定义调色器。
+- 每位玩家开场三选一；每局最多换三组，次数由服务端保存，刷新不会重置。
+- 结算点击“播放回放”后，按接龙顺序展示玩家、开场词、逐笔绘画和猜词；支持暂停、重播、切换接龙和 0.5 / 1 / 2 / 4 倍速。
+- 猜词音效使用浏览器合成，点击播放后启用，可随时静音。各玩家独立控制回放进度。
+- 笔画、橡皮、撤销、重做与清空操作记录保存在私有 R2 中，只在结算后允许本房间玩家读取。回放按绘制顺序加速展示，不保留作画时的停顿。
+- 更新前已保存的画作只有图片，无法补录笔画，会自动显示最终画作。要体验完整新版，请所有人刷新后开始新的一局。

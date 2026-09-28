@@ -1,6 +1,19 @@
-export type Entry = { kind: 'text' | 'draw'; text?: string; image?: string; skipped?: boolean; author: string };
+export type Entry = { kind: 'text' | 'draw'; text?: string; image?: string; replay?: boolean; skipped?: boolean; author: string };
 export type Player = { id: string; name: string; secret: string; left?: boolean };
-export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][] };
+export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}> };
+const wordBank = [
+ '一只正在加班的企鹅','骑着恐龙去买奶茶','月亮偷偷吃蛋糕','在太空里涮火锅','一只害怕老鼠的猫','西瓜在健身房举铁',
+ '穿着雨衣的太阳','机器人第一次煮面','章鱼同时刷八颗牙','熊猫骑独轮车','长颈鹿打领带','小狗在云朵上睡觉',
+ '会飞的冰淇淋车','雪人在沙滩晒太阳','乌龟参加百米赛跑','猫咪开挖掘机','大象躲在雨伞下','给星星洗澡',
+ '恐龙在跳芭蕾','面包在坐过山车','一只穿拖鞋的鲨鱼','外星人遛地球','香蕉在唱歌','蘑菇撑着雨伞',
+ '狐狸在月亮上钓鱼','小猪骑着扫帚飞','兔子给萝卜理发','螃蟹弹钢琴','冰箱在跑马拉松','两颗土豆在跳舞',
+ '鲸鱼吹出彩虹泡泡','仙人掌想要一个拥抱','猫头鹰上课打瞌睡','棉花糖在泡温泉','一只戴墨镜的鸭子','火龙给蛋糕吹蜡烛',
+ '蜗牛背着摩天大楼','海豚在打篮球','奶茶里住着小怪兽','小熊把云朵当枕头','金鱼开着潜水艇','长了翅膀的汉堡',
+ '小鸡在教老鹰飞行','地球打了一个喷嚏','穿西装的北极熊','一只倒立的火烈鸟','火山喷出爆米花','月亮在荡秋千',
+ '小猫坐在披萨上冲浪','河马在吹口琴','雪人抱着电风扇','会走路的城堡','刺猬给自己梳头','一条迷路的美人鱼',
+ '青蛙戴皇冠吃面条','老虎抱着毛绒兔子','小狗和镜子吵架','小羊踩着滑板','用彩虹当跳绳','宇航员在月球种西瓜'
+];
+function promptDeck(){const deck=[...wordBank];for(let i=deck.length-1;i>0;i--){const j=crypto.getRandomValues(new Uint32Array(1))[0]%(i+1);[deck[i],deck[j]]=[deck[j],deck[i]]}return deck.slice(0,12)}
 export class GameError extends Error { constructor(message: string, public status = 400) {super(message)} }
 export function kind(round:number):'text'|'draw' { return round % 2 ? 'draw' : 'text' }
 export function advance(room:Room, now=Date.now()) {
@@ -19,8 +32,9 @@ export function view(room:Room, secret:string, version:number) {
   const index=room.players.findIndex(p=>p.secret===secret);
   if(index<0) throw new GameError('请重新加入这个房间。',401);
   const me=room.players[index];
+  const offer=room.phase==='play'&&room.round===0?room.prompts?.[me.id]:undefined;
   const previous=room.phase==='play' && room.round>0 ? room.entries[room.round-1][(index-1+room.players.length)%room.players.length] : null;
-  return {code:room.code,host:room.host,me:me.id,phase:room.phase,game:room.game,round:room.round,total:room.players.length,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,submitted:!!room.entries[room.round]?.[index],players:room.players.map((p,i)=>({id:p.id,name:p.name,left:!!p.left,submitted:!!room.entries[room.round]?.[i]})),albums:room.phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+r)%room.players.length])})):null};
+  return {code:room.code,host:room.host,me:me.id,phase:room.phase,game:room.game,round:room.round,total:room.players.length,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,choices:offer?offer.deck.slice(offer.batch*3,offer.batch*3+3):null,choiceSet:offer?.batch??0,rerollsLeft:offer?3-offer.batch:0,submitted:!!room.entries[room.round]?.[index],players:room.players.map((p,i)=>({id:p.id,name:p.name,left:!!p.left,submitted:!!room.entries[room.round]?.[i]})),albums:room.phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+r)%room.players.length])})):null};
 }
 export function act(room:Room, secret:string, body:Record<string,unknown>, now=Date.now()) {
   const index=room.players.findIndex(p=>p.secret===secret);
@@ -48,12 +62,20 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     const duration=Number(body.duration);
     if(![60,90,120,180].includes(duration)) throw new GameError('请选择有效的回合时长。');
     room.duration=duration;room.phase='play';room.round=0;room.game=crypto.randomUUID();room.deadline=now+duration*1000;
+    room.prompts=Object.fromEntries(room.players.map(p=>[p.id,{deck:promptDeck(),batch:0}]));
     room.entries=Array.from({length:room.players.length},()=>Array(room.players.length).fill(null));return;
+  }
+  if(action==='reroll') {
+    const offer=room.prompts?.[player.id];
+    if(room.phase!=='play'||room.round!==0||body.game!==room.game||room.entries[0][index]||!offer)throw new GameError('现在不能换词。',409);
+    if(body.choiceSet!==offer.batch)throw new GameError('词组选项已更新，请稍后重试。',409);
+    if(offer.batch>=3)throw new GameError('三次换词机会已经用完。',409);
+    offer.batch++;return;
   }
   if(action==='restart') {
     if(room.host!==player.id) throw new GameError('只有房主可以开启下一局。',403);
     if(room.phase!=='reveal') throw new GameError('请先完成这一局。',409);
-    room.players=room.players.filter(p=>!p.left);room.phase='lobby';room.round=0;room.entries=[];return;
+    room.players=room.players.filter(p=>!p.left);room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;return;
   }
   if(action==='submit') {
     if(room.phase!=='play' || body.game!==room.game || body.round!==room.round) throw new GameError('这一轮已经结束，正在同步下一轮。',409);
@@ -61,10 +83,13 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     const entry:Entry={kind:kind(room.round),author:player.id};
     if(entry.kind==='text') {
       if(typeof body.text!=='string'|| !body.text.trim() || body.text.trim().length>80) throw new GameError('写下 1–80 个字再传给下一位吧。');
+      const offer=room.prompts?.[player.id];
+      if(room.round===0&&offer&&!offer.deck.slice(offer.batch*3,offer.batch*3+3).includes(body.text.trim()))throw new GameError('请从当前三个词中选择一个。');
       entry.text=body.text.trim();
     } else {
       if(typeof body.imageKey!=='string') throw new GameError('画作还没有保存，请重试。');
       entry.image=body.imageKey;
+      if(body.hasReplay===true)entry.replay=true;
     }
     room.entries[room.round][index]=entry;advance(room,now);return;
   }

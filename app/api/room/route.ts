@@ -1,5 +1,6 @@
 import { act, advance, GameError, Room, validName, view } from '@/lib/game';
 import { bucket, database, readRoom, secretFrom, updateRoom } from '@/lib/room-store';
+import {validateRecording} from '@/lib/drawing';
 export const dynamic='force-dynamic';
 function json(data:unknown,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store'}})}
 function fail(error:unknown){if(error instanceof GameError)return json({error:error.message},error.status);console.error('Room service',error);return json({error:'暂时无法连接房间，你的内容会保留，请稍后重试。'},503)}
@@ -11,8 +12,8 @@ export async function GET(request:Request){try{
 }catch(e){return fail(e)}}
 export async function POST(request:Request){try{
   if(request.headers.get('origin') && request.headers.get('origin')!==new URL(request.url).origin)throw new GameError('请从游戏页面操作。',403);
-  if(Number(request.headers.get('content-length')||0)>600000)throw new GameError('画作太大，请简化后重试。',413);
-  const raw=await request.text();if(raw.length>600000)throw new GameError('画作太大，请简化后重试。',413);
+  if(Number(request.headers.get('content-length')||0)>1800000)throw new GameError('画作太大，请简化后重试。',413);
+  const raw=await request.text();if(raw.length>1800000)throw new GameError('画作太大，请简化后重试。',413);
   let body:Record<string,unknown>;try{body=JSON.parse(raw)}catch{throw new GameError('请求格式错误。')}
   if(!body || typeof body!=='object' || Array.isArray(body))throw new GameError('请求格式错误。');
   const secret=await secretFrom(request);
@@ -30,6 +31,7 @@ export async function POST(request:Request){try{
   const code=codeFrom(body.code);
   // Only the server may assign an object key to a submitted drawing.
   delete body.imageKey;
+  delete body.hasReplay;
   if(body.action==='submit' && typeof body.image==='string'){
     const {room}=await readRoom(code);view(room,secret,0);
     const player=room.players.find(p=>p.secret===secret)!;
@@ -41,6 +43,10 @@ export async function POST(request:Request){try{
     const dv=new DataView(bytes.buffer);
     if(bytes.length<24||bytes.length>440000||dv.getUint32(0)!==0x89504e47||dv.getUint32(4)!==0x0d0a1a0a||dv.getUint32(16)>1600||dv.getUint32(20)>1200)throw new GameError('画作尺寸不正确，请重试。');
     const key=`${code}/${room.game}/${room.round}/${player.id}/${crypto.randomUUID()}.png`;
+    if(body.recording!==undefined){
+      let recording;try{recording=validateRecording(body.recording)}catch(e){throw new GameError((e as Error).message)}
+      await bucket().put(key+'.json',JSON.stringify(recording),{httpMetadata:{contentType:'application/json'}});body.hasReplay=true;
+    }
     await bucket().put(key,bytes,{httpMetadata:{contentType:'image/png'}});body.imageKey=key;
   }
   const result=await updateRoom(code,room=>{
