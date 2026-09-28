@@ -1,20 +1,8 @@
+import {dealWordDecks} from './words.ts';
 import {makeReplaySchedule,REPLAY_LEAD_MS} from './replay-clock.ts';
 export type Entry = { kind: 'text' | 'draw'; text?: string; image?: string; replay?: boolean; replayMs?:number; width?:number; height?:number; skipped?: boolean; author: string };
 export type Player = { id: string; name: string; secret: string; left?: boolean };
-export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number };
-const wordBank = [
- '一只正在加班的企鹅','骑着恐龙去买奶茶','月亮偷偷吃蛋糕','在太空里涮火锅','一只害怕老鼠的猫','西瓜在健身房举铁',
- '穿着雨衣的太阳','机器人第一次煮面','章鱼同时刷八颗牙','熊猫骑独轮车','长颈鹿打领带','小狗在云朵上睡觉',
- '会飞的冰淇淋车','雪人在沙滩晒太阳','乌龟参加百米赛跑','猫咪开挖掘机','大象躲在雨伞下','给星星洗澡',
- '恐龙在跳芭蕾','面包在坐过山车','一只穿拖鞋的鲨鱼','外星人遛地球','香蕉在唱歌','蘑菇撑着雨伞',
- '狐狸在月亮上钓鱼','小猪骑着扫帚飞','兔子给萝卜理发','螃蟹弹钢琴','冰箱在跑马拉松','两颗土豆在跳舞',
- '鲸鱼吹出彩虹泡泡','仙人掌想要一个拥抱','猫头鹰上课打瞌睡','棉花糖在泡温泉','一只戴墨镜的鸭子','火龙给蛋糕吹蜡烛',
- '蜗牛背着摩天大楼','海豚在打篮球','奶茶里住着小怪兽','小熊把云朵当枕头','金鱼开着潜水艇','长了翅膀的汉堡',
- '小鸡在教老鹰飞行','地球打了一个喷嚏','穿西装的北极熊','一只倒立的火烈鸟','火山喷出爆米花','月亮在荡秋千',
- '小猫坐在披萨上冲浪','河马在吹口琴','雪人抱着电风扇','会走路的城堡','刺猬给自己梳头','一条迷路的美人鱼',
- '青蛙戴皇冠吃面条','老虎抱着毛绒兔子','小狗和镜子吵架','小羊踩着滑板','用彩虹当跳绳','宇航员在月球种西瓜'
-];
-function promptDeck(){const deck=[...wordBank];for(let i=deck.length-1;i>0;i--){const j=crypto.getRandomValues(new Uint32Array(1))[0]%(i+1);[deck[i],deck[j]]=[deck[j],deck[i]]}return deck.slice(0,12)}
+export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number; wordHistory?:string[] };
 export class GameError extends Error { constructor(message: string, public status = 400) {super(message)} }
 export function kind(round:number):'text'|'draw' { return round % 2 ? 'draw' : 'text' }
 export function advance(room:Room, now=Date.now()) {
@@ -65,7 +53,8 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     if(![60,90,120,180].includes(duration)) throw new GameError('请选择有效的回合时长。');
     room.duration=duration;room.phase='play';room.round=0;room.game=crypto.randomUUID();room.deadline=now+duration*1000;
     delete room.replayStartsAt;
-    room.prompts=Object.fromEntries(room.players.map(p=>[p.id,{deck:promptDeck(),batch:0}]));
+    const dealt=dealWordDecks(room.players.length,room.wordHistory);room.wordHistory=dealt.history;
+    room.prompts=Object.fromEntries(room.players.map((p,i)=>[p.id,{deck:dealt.decks[i],batch:0}]));
     room.entries=Array.from({length:room.players.length},()=>Array(room.players.length).fill(null));return;
   }
   if(action==='reroll') {
