@@ -1,18 +1,21 @@
+import {DRAWING_UPLOAD_GRACE_MS} from './drawing-timeout.ts';
 import {dealWordDecks} from './words.ts';
 import {makeReplaySchedule,REPLAY_LEAD_MS} from './replay-clock.ts';
 export type Entry = { kind: 'text' | 'draw'; text?: string; image?: string; replay?: boolean; replayMs?:number; width?:number; height?:number; skipped?: boolean; author: string };
 export type Player = { id: string; name: string; secret: string; left?: boolean; ready?:boolean; returned?:boolean; kicked?:boolean };
-export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number; wordHistory?:string[]; removed?:string[] };
+export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number; wordHistory?:string[]; removed?:string[]; drafts?:Record<string,{entry:Entry;savedAt:number}> };
 export class GameError extends Error { constructor(message: string, public status = 400, public code?:string) {super(message)} }
 export function kind(round:number):'text'|'draw' { return round % 2 ? 'draw' : 'text' }
 export function advance(room:Room, now=Date.now()) {
   if(room.phase==='reveal'&&!room.replayStartsAt){room.replayStartsAt=now+REPLAY_LEAD_MS;return true}
-  if(room.phase==='reveal'&&room.players.some(p=>!p.left)&&room.players.filter(p=>!p.left).every(p=>p.returned)){room.players=room.players.filter(p=>!p.left);room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;delete room.replayStartsAt;return true}
+  if(room.phase==='reveal'&&room.players.some(p=>!p.left)&&room.players.filter(p=>!p.left).every(p=>p.returned)){room.players=room.players.filter(p=>!p.left);room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;delete room.replayStartsAt;delete room.drafts;return true}
   if(room.phase !== 'play') return false;
   const row = room.entries[room.round];
   let changed = false;
-  room.players.forEach((p,i)=>{if(!row[i] && (p.left || now>=room.deadline)){row[i]={kind:kind(room.round),author:p.id,skipped:true};changed=true}});
+  const expires=room.deadline+(kind(room.round)==='draw'?DRAWING_UPLOAD_GRACE_MS:0);
+  room.players.forEach((p,i)=>{if(!row[i] && (p.left || now>=expires)){row[i]=room.drafts?.[p.id]?.entry??{kind:kind(room.round),author:p.id,skipped:true};changed=true}});
   if(row.filter(Boolean).length===room.players.length){
+    delete room.drafts;
     if(room.round+1>=room.players.length){room.phase='reveal';room.replayStartsAt=now+REPLAY_LEAD_MS}
     else {room.round++;room.deadline=now+room.duration*1000}
     changed=true;
@@ -77,7 +80,7 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     if(![60,90,120,180].includes(duration)) throw new GameError('请选择有效的回合时长。');
     room.duration=duration;room.phase='play';room.round=0;room.game=crypto.randomUUID();room.deadline=now+duration*1000;
     room.players.forEach(p=>{p.ready=false;p.returned=false});
-    delete room.replayStartsAt;
+    delete room.replayStartsAt;delete room.drafts;
     const dealt=dealWordDecks(room.players.length,room.wordHistory);room.wordHistory=dealt.history;
     room.prompts=Object.fromEntries(room.players.map((p,i)=>[p.id,{deck:dealt.decks[i],batch:0}]));
     room.entries=Array.from({length:room.players.length},()=>Array(room.players.length).fill(null));return;
@@ -97,9 +100,11 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     if(!player.returned){player.returned=true;player.ready=false}
     advance(room,now);return;
   }
-  if(action==='submit') {
+  if(action==='submit'||action==='draft') {
     if(room.phase!=='play' || body.game!==room.game || body.round!==room.round) throw new GameError('这一轮已经结束，正在同步下一轮。',409);
     if(room.entries[room.round][index]) return;
+    if(action==='draft'&&kind(room.round)!=='draw')throw new GameError('只有绘画回合可以保存画作。');
+    if(kind(room.round)==='draw'&&now>=room.deadline+DRAWING_UPLOAD_GRACE_MS)throw new GameError('这一轮已经结束，正在同步下一轮。',409);
     const entry:Entry={kind:kind(room.round),author:player.id};
     if(entry.kind==='text') {
       if(typeof body.text!=='string'|| !body.text.trim() || body.text.trim().length>80) throw new GameError('写下 1–80 个字再传给下一位吧。');
@@ -112,7 +117,16 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
       if(body.hasReplay===true){entry.replay=true;entry.replayMs=Number(body.replayMs)||6000}
       if(typeof body.boardWidth==='number'&&typeof body.boardHeight==='number'){entry.width=body.boardWidth;entry.height=body.boardHeight}
     }
-    room.entries[room.round][index]=entry;advance(room,now);return;
+    if(action==='draft'){
+      const savedAt=Number(body.draftAt);
+      if(!Number.isFinite(savedAt))throw new GameError('保存时间无效。');
+      room.drafts??={};
+      if(!room.drafts[player.id]||savedAt>room.drafts[player.id].savedAt)room.drafts[player.id]={entry,savedAt};
+      return;
+    }
+    room.entries[room.round][index]=entry;
+    if(room.drafts)delete room.drafts[player.id];
+    advance(room,now);return;
   }
   throw new GameError('不支持的操作。');
 }

@@ -1,5 +1,6 @@
 import { act, advance, GameError, Room, validName, view } from '@/lib/game';
 import { bucket, database, readRoom, secretFrom, updateRoom } from '@/lib/room-store';
+import {DRAWING_UPLOAD_GRACE_MS} from '@/lib/drawing-timeout';
 import {validateRecording,actionUnits} from '@/lib/drawing';
 export const dynamic='force-dynamic';
 function json(data:unknown,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store'}})}
@@ -10,7 +11,7 @@ export async function GET(request:Request){try{
   const result=await updateRoom(code,room=>{view(room,secret,0);return advance(room)});
   return json(view(result.room,secret,result.version));
 }catch(e){return fail(e)}}
-export async function POST(request:Request){try{
+export async function POST(request:Request){const receivedAt=Date.now();try{
   if(request.headers.get('origin') && request.headers.get('origin')!==new URL(request.url).origin)throw new GameError('请从游戏页面操作。',403);
   if(Number(request.headers.get('content-length')||0)>1800000)throw new GameError('画作太大，请简化后重试。',413);
   const raw=await request.text();if(raw.length>1800000)throw new GameError('画作太大，请简化后重试。',413);
@@ -30,13 +31,13 @@ export async function POST(request:Request){try{
   }
   const code=codeFrom(body.code);
   // Only the server may assign an object key to a submitted drawing.
-  delete body.imageKey;
+  delete body.imageKey;delete body.draftAt;
   delete body.hasReplay;delete body.replayMs;delete body.boardWidth;delete body.boardHeight;
-  if(body.action==='submit' && typeof body.image==='string'){
-    const {room}=await readRoom(code);view(room,secret,0);
+  if((body.action==='submit'||body.action==='draft') && typeof body.image==='string'){
+    const {room,version}=await readRoom(code);view(room,secret,0);
     const player=room.players.find(p=>p.secret===secret)!;
-    if(room.phase!=='play'||body.game!==room.game||body.round!==room.round||room.round%2!==1||player.left||Date.now()>=room.deadline)throw new GameError('这一轮已经结束，正在同步下一轮。',409);
-    if(room.entries[room.round][room.players.indexOf(player)])return json(view(room,secret,0));
+    if(room.phase!=='play'||body.game!==room.game||body.round!==room.round||room.round%2!==1||player.left||Date.now()>=room.deadline+DRAWING_UPLOAD_GRACE_MS)throw new GameError('这一轮已经结束，正在同步下一轮。',409);
+    if(room.entries[room.round][room.players.indexOf(player)])return json(view(room,secret,version));
     const match=/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(body.image);
     if(!match)throw new GameError('画作格式错误，请重新提交。');
     let bytes:Uint8Array;try{bytes=Uint8Array.from(atob(match[1]),c=>c.charCodeAt(0))}catch{throw new GameError('画作格式错误。')}
@@ -48,15 +49,23 @@ export async function POST(request:Request){try{
       let recording;try{recording=validateRecording(body.recording)}catch(e){throw new GameError((e as Error).message)}
       await bucket().put(key+'.json',JSON.stringify(recording),{httpMetadata:{contentType:'application/json'}});body.hasReplay=true;body.replayMs=Math.min(18000,Math.max(4000,recording.actions.reduce((n,a)=>n+actionUnits(a),0)*8));
     }
-    await bucket().put(key,bytes,{httpMetadata:{contentType:'image/png'}});body.imageKey=key;
+    await bucket().put(key,bytes,{httpMetadata:{contentType:'image/png'}});body.imageKey=key;body.draftAt=receivedAt;
   }
+  let previousDraftKey:string|undefined;
   const result=await updateRoom(code,room=>{
+    previousDraftKey=room.drafts?.[room.players.find(p=>p.secret===secret)?.id||'']?.entry.image;
     if(body.action!=='join')view(room,secret,0);
     // Advance first so a stale submission can never overwrite a new round.
     const changed=advance(room);
-    if(body.action==='submit' && (body.round!==room.round||room.phase!=='play')){if(changed)return true;throw new GameError('这一轮已经结束，正在同步下一轮。',409)}
+    if((body.action==='submit'||body.action==='draft') && (body.round!==room.round||room.phase!=='play')){if(changed)return true;throw new GameError('这一轮已经结束，正在同步下一轮。',409)}
     act(room,secret,body);return true;
   });
+  // Replaced draft images are no longer needed; never remove a submitted image.
+  if(body.action==='draft'||body.action==='submit'){
+    const retained=new Set([...result.room.entries.flat().map(e=>e?.image),...Object.values(result.room.drafts||{}).map(d=>d.entry.image)]);
+    const obsolete=[previousDraftKey,typeof body.imageKey==='string'?body.imageKey:undefined].filter((key):key is string=>!!key&&!retained.has(key));
+    await Promise.all([...new Set(obsolete)].map(async key=>{try{await bucket().delete([key,key+'.json'])}catch(e){console.error('Draft cleanup',e)}}));
+  }
   if(body.action==='leave')return json({left:true});
   return json(view(result.room,secret,result.version));
 }catch(e){return fail(e)}}

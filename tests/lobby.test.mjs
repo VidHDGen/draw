@@ -4,7 +4,7 @@ import {act,advance,view} from '../lib/game.ts';
 function room(){return {code:'ABCDEF',host:'a',players:['a','b','c'].map(id=>({id,name:'玩家'+id,secret:id})),phase:'lobby',game:'',round:0,duration:60,deadline:0,entries:[]}}
 function ready(r,id,value=true){act(r,id,{action:'ready',game:r.game,ready:value})}
 function start(r){ready(r,'b');ready(r,'c');act(r,'a',{action:'start',duration:60},0)}
-function finish(r){start(r);advance(r,60000);advance(r,120000);advance(r,180000);return view(r,'a',0).replaySchedule.endsAt}
+function finish(r){start(r);advance(r,60000);advance(r,130000);advance(r,190000);return view(r,'a',0).replaySchedule.endsAt}
 test('host must wait for all other players; readiness is explicit, private to the player, and cleared each game',()=>{
  const r=room();assert.equal(view(r,'a',0).canStart,false);
  assert.throws(()=>act(r,'a',{action:'start',duration:60}),e=>e.status===409);
@@ -39,7 +39,7 @@ test('midgame kicks keep rotation, previous-player identity and existing drawing
  act(r,'a',{action:'kick',playerId:'b'},2);assert.equal(r.players.length,3);assert.equal(r.entries[0][1].text,word);
  advance(r,60000);const state=view(r,'c',1);assert.equal(state.previous.text,word);assert.deepEqual(state.previousPlayer,{id:'b',name:'玩家b',avatar:1});assert.equal(state.previousPlayer.secret,undefined);
  advance(r,60001);assert.equal(r.entries[1][1].skipped,true);
- advance(r,120000);advance(r,180000);const end=view(r,'a',2).replaySchedule.endsAt;
+ advance(r,130000);advance(r,190000);const end=view(r,'a',2).replaySchedule.endsAt;
  act(r,'a',{action:'return',game:r.game},end);act(r,'c',{action:'return',game:r.game},end);assert.equal(r.players.length,2);assert.equal(r.phase,'lobby');
 });
 test('leaving or kicking the last player still in results releases the waiting lobby',()=>{
