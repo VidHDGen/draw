@@ -19,10 +19,10 @@ test('many games rotate exhausted categories without duplicating a current offer
  for(let i=0;i<60;i++){const next=dealWordDecks(12,history);assert.equal(new Set(next.decks.flat()).size,144);assert.ok(next.history.length<=1600);assert.equal(new Set(next.history).size,next.history.length);history=next.history}
 });
 test('room restart retains word history privately and the next game avoids the prior offers',()=>{
- const r={code:'ABCDEF',host:'a',players:['a','b','c'].map(id=>({id,name:id,secret:id})),phase:'lobby',game:'',round:0,duration:60,deadline:0,entries:[]};
+ const r={code:'ABCDEF',host:'a',players:['a','b','c'].map(id=>({id,name:id,secret:id,ready:true})),phase:'lobby',game:'',round:0,duration:60,deadline:0,entries:[]};
  act(r,'a',{action:'start',duration:60},0);const original=[...r.wordHistory];
  advance(r,60000);advance(r,120000);advance(r,180000);
- act(r,'a',{action:'restart'},view(r,'a',0).replaySchedule.endsAt);
+ const end=view(r,'a',0).replaySchedule.endsAt;for(const secret of ['a','b','c'])act(r,secret,{action:'return',game:r.game},end);for(const secret of ['b','c'])act(r,secret,{action:'ready',game:r.game,ready:true},end);
  assert.deepEqual(r.wordHistory,original);act(r,'a',{action:'start',duration:60},1000000);
  assert.ok(Object.values(r.prompts).flatMap(p=>p.deck).every(word=>!original.includes(word)));
  assert.equal(view(r,'a',0).wordHistory,undefined);

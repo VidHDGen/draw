@@ -20,7 +20,7 @@ test('timeout persists a single shared replay epoch, reconnect does not restart 
  assert.equal(replayPosition(plan,drawing.endsAt).index,2);
  assert.equal(replayPosition(plan,plan.endsAt).ended,true);
  assert.throws(()=>act(r,'a',{action:'restart'},plan.endsAt-1),e=>e.status===409);
- act(r,'a',{action:'restart'},plan.endsAt);assert.equal(r.phase,'lobby');assert.equal(r.replayStartsAt,undefined);
+ for(const secret of ['a','b','c'])act(r,secret,{action:'return',game:r.game},plan.endsAt);assert.equal(r.phase,'lobby');assert.equal(r.replayStartsAt,undefined);
 });
 test('last submission starts automatic replay; legacy reveal rooms acquire an epoch only once',()=>{
  const r=finished();r.deadline=10000;r.entries[2][0]={kind:'text',author:'a',text:'猜'};r.entries[2][1]={kind:'text',author:'b',text:'猜'};

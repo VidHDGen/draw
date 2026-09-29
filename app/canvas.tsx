@@ -1,6 +1,6 @@
 "use client";
 import {forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
-import type {CSSProperties} from 'react';
+import type {CSSProperties,ReactNode} from 'react';
 import {Pencil,Eraser,Undo2,Redo2,Trash2,Check,Maximize2,Minimize2} from 'lucide-react';
 import {Slider} from '@/components/ui/slider';
 import {BOARD_WIDTH,BOARD_HEIGHT,MAX_ACTIONS,MAX_POINTS,drawingState,paintDrawing,paintStroke} from '@/lib/drawing';
@@ -8,7 +8,7 @@ import type {Stroke,DrawAction,Recording} from '@/lib/drawing';
 export type CanvasHandle={image:()=>string;hasDrawing:()=>boolean;recording:()=>Recording};
 const colors=['#202943','#000000','#64748b','#cbd5e1','#ffffff','#7f1d1d','#dc2626','#f87171','#fb923c','#f59e0b','#fde047','#fef08a','#365314','#65a30d','#a3e635','#16a34a','#34d399','#0f766e','#06b6d4','#67e8f9','#1e3a8a','#2548f4','#60a5fa','#a5b4fc','#6d28d9','#a855f7','#e9d5ff','#be185d','#ec4899','#f9a8d4','#78350f','#c68b59'];
 const names=['墨黑','黑色','灰色','浅灰','白色','深红','红色','珊瑚红','橘色','金橙','黄色','浅黄','橄榄绿','草绿','青柠','绿色','薄荷绿','墨绿','青色','浅青','藏蓝','蓝色','天蓝','淡蓝','深紫','紫色','淡紫','玫红','粉红','浅粉','棕色','肤色'];
-export const DrawingCanvas=forwardRef<CanvasHandle,{draftKey:string;compact?:boolean;disabled?:boolean}>(function DrawingCanvas({draftKey,compact,disabled},ref){
+export const DrawingCanvas=forwardRef<CanvasHandle,{draftKey:string;compact?:boolean;disabled?:boolean;source?:ReactNode}>(function DrawingCanvas({draftKey,compact,disabled,source},ref){
  const canvas=useRef<HTMLCanvasElement>(null),active=useRef<Stroke|null>(null),pointer=useRef<number|null>(null),actionsRef=useRef<DrawAction[]>([]);
  const [actions,setActions]=useState<DrawAction[]>([]),[color,setColor]=useState(colors[0]),[width,setWidth]=useState(6),[eraser,setEraser]=useState(false),[expanded,setExpanded]=useState(false),[notice,setNotice]=useState('');
  const [size,setSize]=useState({width:BOARD_WIDTH,height:BOARD_HEIGHT});
@@ -24,7 +24,8 @@ export const DrawingCanvas=forwardRef<CanvasHandle,{draftKey:string;compact?:boo
  function finish(){if(active.current){const stroke=active.current;active.current=null;pointer.current=null;save([...actionsRef.current,{type:'stroke',stroke}])}}
  function edit(action:DrawAction){if(disabled)return;if(actionsRef.current.length>=MAX_ACTIONS){setNotice('这幅画的操作次数已满，请提交当前作品。');return}save([...actionsRef.current,action])}
  const usedPoints=useRef(0);
- return <div style={{'--board-ratio':size.width/size.height} as CSSProperties} className={`drawing ${compact?'compact':''} ${expanded?'expanded':''}`}>
+ return <div style={{'--board-ratio':size.width/size.height} as CSSProperties} className={`drawing ${compact?'compact':''} ${expanded?'expanded':''} ${source?'with-source':''}`}>
+  {source}
   <div className="canvas-heading"><span>{compact?'随手画画':'你的画布'}{expanded&&' · 按 Esc 收起'}</span><button type="button" className="text-button" onClick={()=>setExpanded(v=>!v)}>{expanded?<Minimize2 size={17}/>:<Maximize2 size={17}/>}<span>{expanded?'收起画布':'放大画布'}</span></button></div>
   <div className="canvas-wrap"><canvas ref={canvas} width={size.width} height={size.height} aria-label="画板，使用鼠标或手指绘画"
    onPointerDown={e=>{if(disabled||pointer.current!==null||e.button!==0)return;usedPoints.current=actionsRef.current.reduce((n,a)=>n+(a.type==='stroke'?a.stroke.points.length:0),0);if(usedPoints.current>=MAX_POINTS||actionsRef.current.length>=MAX_ACTIONS){setNotice('这幅画的笔画已满，请提交当前作品。');return}e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);pointer.current=e.pointerId;active.current={color:eraser?'#ffffff':color,width:eraser?width*4:width,points:[point(e)]};paint()}}

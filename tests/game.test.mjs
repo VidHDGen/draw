@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {act,advance,view} from '../lib/game.ts';
 
-function room(){return {code:'ABCDEF',host:'a',players:[{id:'a',name:'甲',secret:'s1'},{id:'b',name:'乙',secret:'s2'},{id:'c',name:'丙',secret:'s3'}],phase:'lobby',game:'',round:0,duration:60,deadline:0,entries:[]}}
+function room(){return {code:'ABCDEF',host:'a',players:[{id:'a',name:'甲',secret:'s1'},{id:'b',name:'乙',secret:'s2',ready:true},{id:'c',name:'丙',secret:'s3',ready:true}],phase:'lobby',game:'',round:0,duration:60,deadline:0,entries:[]}}
 test('timeout fills missing answers, rotates once, and starts a fresh deadline',()=>{const r=room();act(r,'s1',{action:'start',duration:60},1000);act(r,'s1',{action:'submit',game:r.game,round:0,text:r.prompts.a.deck[0]},1100);assert.equal(advance(r,60999),false);assert.equal(advance(r,61000),true);assert.equal(r.round,1);assert.equal(r.deadline,121000);assert.equal(r.entries[0][1]?.skipped,true);assert.equal(view(r,'s2',1).previous?.text,r.prompts.a.deck[0]);assert.equal(advance(r,61000),false)});
 test('stale game and client forged round are rejected',()=>{const r=room();act(r,'s1',{action:'start',duration:60});assert.throws(()=>act(r,'s1',{action:'submit',game:'stale',round:0,text:'bad'}));assert.throws(()=>act(r,'s2',{action:'submit',game:r.game,round:2,text:'bad'}));assert.equal(r.entries[0].filter(Boolean).length,0)});
 test('leaving preserves game rotation and fills the departed player on each round',()=>{const r=room();act(r,'s1',{action:'start',duration:60},0);act(r,'s1',{action:'leave'},1);assert.equal(r.players.length,3);assert.equal(r.host,'b');assert.equal(r.entries[0][0]?.skipped,true);advance(r,60000);advance(r,60001);assert.equal(r.entries[1][0]?.skipped,true)});

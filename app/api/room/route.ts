@@ -3,7 +3,7 @@ import { bucket, database, readRoom, secretFrom, updateRoom } from '@/lib/room-s
 import {validateRecording,actionUnits} from '@/lib/drawing';
 export const dynamic='force-dynamic';
 function json(data:unknown,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store'}})}
-function fail(error:unknown){if(error instanceof GameError)return json({error:error.message},error.status);console.error('Room service',error);return json({error:'暂时无法连接房间，你的内容会保留，请稍后重试。'},503)}
+function fail(error:unknown){if(error instanceof GameError)return json({error:error.message,code:error.code},error.status);console.error('Room service',error);return json({error:'暂时无法连接房间，你的内容会保留，请稍后重试。'},503)}
 function codeFrom(value:unknown){if(typeof value!=='string'||! /^[A-Z2-9]{6}$/.test(value))throw new GameError('请输入正确的 6 位房间码。');return value}
 export async function GET(request:Request){try{
   const secret=await secretFrom(request),code=codeFrom(new URL(request.url).searchParams.get('code'));

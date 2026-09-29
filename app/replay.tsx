@@ -9,7 +9,7 @@ import type {Recording} from '@/lib/drawing';
 import type {view} from '@/lib/game';
 type State=ReturnType<typeof view>;
 type Cached={recording:Recording|null;failed:boolean};
-export function GameReplay({room,token,isHost,busy,onRestart,clockOffset}:{room:State;token:string;isHost:boolean;busy:boolean;onRestart:()=>void;clockOffset:number}){
+export function GameReplay({room,token,busy,onReturn,clockOffset}:{room:State;token:string;busy:boolean;onReturn:()=>void;clockOffset:number}){
  const schedule=room.replaySchedule,albums=room.albums||[];
  const [now,setNow]=useState(()=>Date.now()+clockOffset),[sound,setSound]=useState(true),[ready,setReady]=useState(false),[,setLoaded]=useState(0);
  const offset=useRef(clockOffset),canvas=useRef<HTMLCanvasElement>(null),cache=useRef(new Map<string,Cached>()),lastSound=useRef('');
@@ -45,8 +45,8 @@ export function GameReplay({room,token,isHost,busy,onRestart,clockOffset}:{room:
    </>}
   </div>
   <div className="cinema-progress" role="progressbar" aria-label="全房间回放进度" aria-valuenow={Math.round(schedule?Math.max(0,Math.min(1,(now-schedule.startsAt)/(schedule.endsAt-schedule.startsAt)))*100:0)} aria-valuemin={0} aria-valuemax={100}><span style={{width:`${schedule?Math.max(0,Math.min(1,(now-schedule.startsAt)/(schedule.endsAt-schedule.startsAt)))*100:0}%`}}/></div>
-  <div className="sync-footer"><p className="muted">{ended?'全部接龙已播放完毕，可以开始下一局了。':'自动同步播放 · 刷新后会接上大家的进度'}</p><button className="text-button" aria-pressed={sound&&ready} onClick={()=>{unlockSound();if(!ready)setSound(true);else setSound(v=>!v)}}>{sound&&ready?<Volume2 size={18}/>:<VolumeX size={18}/>} {!ready?'开启音效':sound?'音效开':'音效关'}</button></div>
+  <div className="sync-footer"><p className="muted">{ended?'全部接龙已播放完毕，返回房间准备下一局吧。':'自动同步播放 · 刷新后会接上大家的进度'}</p><button className="text-button" aria-pressed={sound&&ready} onClick={()=>{unlockSound();if(!ready)setSound(true);else setSound(v=>!v)}}>{sound&&ready?<Volume2 size={18}/>:<VolumeX size={18}/>} {!ready?'开启音效':sound?'音效开':'音效关'}</button></div>
   <div className="cinema-steps sync-steps" aria-label="本条接龙的玩家顺序">{album?.entries.map((e,i)=><div className={i===step?'active':''} key={i} aria-current={i===step?'step':undefined}><span>{i+1}</span>{room.players.find(p=>p.id===e?.author)?.name}<small>{i===0?'选词':e?.kind==='draw'?'画画':'猜词'}</small></div>)}</div>
-  <div className="reveal-actions"><span className="tag">{ended?'这一局，圆满跑偏。':'大家一起看到最后'}</span>{isHost&&<button className="secondary next-game" disabled={busy||!ended} onClick={onRestart}>{ended?'再来一局':'回放结束后可开始下一局'}<Shuffle size={18}/></button>}</div>
+  <div className="reveal-actions"><span className="tag">{ended?'这一局，圆满跑偏。':'大家一起看到最后'}</span>{<button className="secondary next-game" disabled={busy||!ended} onClick={onReturn}>{ended?'返回房间':'回放结束后可返回房间'}<Shuffle size={18}/></button>}</div>
  </section>
 }

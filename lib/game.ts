@@ -1,12 +1,13 @@
 import {dealWordDecks} from './words.ts';
 import {makeReplaySchedule,REPLAY_LEAD_MS} from './replay-clock.ts';
 export type Entry = { kind: 'text' | 'draw'; text?: string; image?: string; replay?: boolean; replayMs?:number; width?:number; height?:number; skipped?: boolean; author: string };
-export type Player = { id: string; name: string; secret: string; left?: boolean };
-export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number; wordHistory?:string[] };
-export class GameError extends Error { constructor(message: string, public status = 400) {super(message)} }
+export type Player = { id: string; name: string; secret: string; left?: boolean; ready?:boolean; returned?:boolean; kicked?:boolean };
+export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number; wordHistory?:string[]; removed?:string[] };
+export class GameError extends Error { constructor(message: string, public status = 400, public code?:string) {super(message)} }
 export function kind(round:number):'text'|'draw' { return round % 2 ? 'draw' : 'text' }
 export function advance(room:Room, now=Date.now()) {
   if(room.phase==='reveal'&&!room.replayStartsAt){room.replayStartsAt=now+REPLAY_LEAD_MS;return true}
+  if(room.phase==='reveal'&&room.players.some(p=>!p.left)&&room.players.filter(p=>!p.left).every(p=>p.returned)){room.players=room.players.filter(p=>!p.left);room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;delete room.replayStartsAt;return true}
   if(room.phase !== 'play') return false;
   const row = room.entries[room.round];
   let changed = false;
@@ -18,20 +19,26 @@ export function advance(room:Room, now=Date.now()) {
   }
   return changed;
 }
+function checkAccess(room:Room,secret:string){if(room.removed?.includes(secret))throw new GameError('你已被房主移出房间。',403,'ROOM_KICKED')}
 export function view(room:Room, secret:string, version:number) {
+  checkAccess(room,secret);
   const index=room.players.findIndex(p=>p.secret===secret);
   if(index<0) throw new GameError('请重新加入这个房间。',401);
   const me=room.players[index];
   const offer=room.phase==='play'&&room.round===0?room.prompts?.[me.id]:undefined;
   const previous=room.phase==='play' && room.round>0 ? room.entries[room.round-1][(index-1+room.players.length)%room.players.length] : null;
-  return {code:room.code,host:room.host,me:me.id,phase:room.phase,game:room.game,round:room.round,total:room.players.length,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,replaySchedule:room.phase==='reveal'&&room.replayStartsAt?makeReplaySchedule(room.entries,room.replayStartsAt):null,choices:offer?offer.deck.slice(offer.batch*3,offer.batch*3+3):null,nextChoices:offer&&offer.batch<3?offer.deck.slice((offer.batch+1)*3,(offer.batch+2)*3):null,choiceSet:offer?.batch??0,rerollsLeft:offer?3-offer.batch:0,submitted:!!room.entries[room.round]?.[index],players:room.players.map((p,i)=>({id:p.id,name:p.name,left:!!p.left,submitted:!!room.entries[room.round]?.[i]})),albums:room.phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+r)%room.players.length])})):null};
+  const phase=room.phase==='reveal'&&me.returned?'lobby':room.phase;
+  const previousPlayer=room.players.find(p=>p.id===previous?.author);
+  const members=room.players.map((p,i)=>({id:p.id,name:p.name,avatar:i%6,left:!!p.left,ready:!!p.ready,returned:room.phase==='lobby'||!!p.returned,kicked:!!p.kicked,submitted:!!room.entries[room.round]?.[i]}));
+  return {code:room.code,host:room.host,me:me.id,phase,game:room.game,round:room.round,total:room.players.length,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,previousPlayer:previousPlayer?{id:previousPlayer.id,name:previousPlayer.name,avatar:room.players.indexOf(previousPlayer)%6}:null,canStart:room.phase==='lobby'&&room.players.length>=3&&room.players.every(p=>p.id===room.host||p.ready),replaySchedule:phase==='reveal'&&room.replayStartsAt?makeReplaySchedule(room.entries,room.replayStartsAt):null,choices:offer?offer.deck.slice(offer.batch*3,offer.batch*3+3):null,nextChoices:offer&&offer.batch<3?offer.deck.slice((offer.batch+1)*3,(offer.batch+2)*3):null,choiceSet:offer?.batch??0,rerollsLeft:offer?3-offer.batch:0,submitted:!!room.entries[room.round]?.[index],players:phase==='lobby'?members.filter(p=>!p.left):members,albums:phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+r)%room.players.length])})):null};
 }
 export function act(room:Room, secret:string, body:Record<string,unknown>, now=Date.now()) {
   const index=room.players.findIndex(p=>p.secret===secret);
   const player=room.players[index];
   const action=body.action;
+  checkAccess(room,secret);
   if(action==='join') {
-    if(player){player.left=false;return}
+    if(player){if(player.left){player.ready=false;player.returned=false}player.left=false;return}
     if(room.phase!=='lobby') throw new GameError('游戏已经开始，等朋友下一局再加入吧。',409);
     if(room.players.length>=12) throw new GameError('房间已满，最多 12 人。',409);
     const name=validName(body.name);
@@ -45,13 +52,31 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     advance(room,now);return;
   }
   if(player.left) throw new GameError('你已离开房间，请重新加入。',401);
+  if(action==='kick') {
+    if(room.host!==player.id)throw new GameError('只有房主可以移出玩家。',403);
+    if(body.playerId===player.id)throw new GameError('不能移出自己，请使用离开房间。');
+    const target=room.players.find(p=>p.id===body.playerId&&!p.left);
+    if(!target)throw new GameError('这位玩家已经离开房间。',404);
+    room.removed=[...(room.removed||[]),target.secret];target.ready=false;target.left=true;target.kicked=true;
+    if(room.phase==='lobby')room.players=room.players.filter(p=>p.id!==target.id);
+    advance(room,now);return;
+  }
+  if(action==='ready') {
+    if(body.game!==room.game)throw new GameError('房间状态已更新，请重新准备。',409);
+    if(room.phase!=='lobby'&&!(room.phase==='reveal'&&player.returned))throw new GameError('请先返回房间再准备。',409);
+    if(player.id===room.host)throw new GameError('房主等待大家准备后直接开始即可。',400);
+    if(typeof body.ready!=='boolean')throw new GameError('准备状态无效。');
+    player.ready=body.ready;return;
+  }
   if(action==='start') {
     if(room.host!==player.id) throw new GameError('只有房主可以开始。',403);
-    if(room.phase!=='lobby') return;
+    if(room.phase!=='lobby')throw new GameError('请等待大家返回房间并准备。',409);
     if(room.players.length<3) throw new GameError('至少需要 3 位朋友才能开始。');
+    if(room.players.some(p=>p.id!==room.host&&!p.ready))throw new GameError('请等所有其他玩家准备好再开始。',409);
     const duration=Number(body.duration);
     if(![60,90,120,180].includes(duration)) throw new GameError('请选择有效的回合时长。');
     room.duration=duration;room.phase='play';room.round=0;room.game=crypto.randomUUID();room.deadline=now+duration*1000;
+    room.players.forEach(p=>{p.ready=false;p.returned=false});
     delete room.replayStartsAt;
     const dealt=dealWordDecks(room.players.length,room.wordHistory);room.wordHistory=dealt.history;
     room.prompts=Object.fromEntries(room.players.map((p,i)=>[p.id,{deck:dealt.decks[i],batch:0}]));
@@ -64,11 +89,13 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     if(offer.batch>=3)throw new GameError('三次换词机会已经用完。',409);
     offer.batch++;return;
   }
-  if(action==='restart') {
-    if(room.host!==player.id) throw new GameError('只有房主可以开启下一局。',403);
-    if(room.phase!=='reveal') throw new GameError('请先完成这一局。',409);
+  if(action==='return'||action==='restart') {
+    if(action==='return'&&body.game!==room.game)throw new GameError('这局已经结束，正在同步房间。',409);
+    if(room.phase==='lobby')return;
+    if(room.phase!=='reveal')throw new GameError('请先完成这一局。',409);
     if(!room.replayStartsAt||now<makeReplaySchedule(room.entries,room.replayStartsAt).endsAt)throw new GameError('大家正在同步观看回放，请等放映结束。',409);
-    room.players=room.players.filter(p=>!p.left);room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;delete room.replayStartsAt;return;
+    if(!player.returned){player.returned=true;player.ready=false}
+    advance(room,now);return;
   }
   if(action==='submit') {
     if(room.phase!=='play' || body.game!==room.game || body.round!==room.round) throw new GameError('这一轮已经结束，正在同步下一轮。',409);

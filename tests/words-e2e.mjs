@@ -5,6 +5,7 @@ const tokens=Array.from({length:3},()=>crypto.randomUUID()+crypto.randomUUID());
 async function post(i,action,extra={}){const response=await fetch(base+'/api/room',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tokens[i]},body:JSON.stringify({code,action,...extra}),signal:AbortSignal.timeout(30000)});const data=await response.json();assert.equal(response.status,200,JSON.stringify(data));return data}
 const created=await post(0,'create',{name:'词库验证员'});code=created.code;
 await Promise.all([post(1,'join',{name:'词库测试甲'}),post(2,'join',{name:'词库测试乙'})]);
+await Promise.all([post(1,'ready',{game:'',ready:true}),post(2,'ready',{game:'',ready:true})]);
 const start=await post(0,'start',{duration:180}),seen=new Set(),prefetched=new Map();
 async function get(i){const r=await fetch(base+'/api/room?code='+code,{headers:{Authorization:'Bearer '+tokens[i]},signal:AbortSignal.timeout(30000)});assert.equal(r.status,200);return r.json()}
 for(let batch=0;batch<4;batch++){
