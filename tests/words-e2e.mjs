@@ -10,7 +10,8 @@ const start=await post(0,'start',{duration:180}),seen=new Set(),prefetched=new M
 async function get(i){const r=await fetch(base+'/api/room?code='+code,{headers:{Authorization:'Bearer '+tokens[i]},signal:AbortSignal.timeout(30000)});assert.equal(r.status,200);return r.json()}
 for(let batch=0;batch<4;batch++){
  const offers=await Promise.all(tokens.map((_,i)=>batch===0?get(i):post(i,'reroll',{game:start.game,choiceSet:batch-1})));
- for(const offer of offers){if(batch>0)assert.deepEqual(offer.choices,prefetched.get(offer.me));if(batch<3)assert.equal(offer.nextChoices.length,3);else assert.equal(offer.nextChoices,null);prefetched.set(offer.me,offer.nextChoices);assert.equal(offer.choices.length,3);assert.equal(offer.rerollsLeft,3-batch);assert.equal(offer.wordHistory,undefined);assert.equal(offer.choices.filter(word=>wordPools[0].includes(word)).length,1);for(const word of offer.choices){assert.ok(wordBank.includes(word),word);assert.ok(!seen.has(word),word);seen.add(word)}}
+ console.log('Batch '+batch+': '+offers.map(offer=>offer.choices.join(' / ')).join(' | '));
+ for(const offer of offers){if(batch>0)assert.deepEqual(offer.choices,prefetched.get(offer.me));if(batch<3)assert.equal(offer.nextChoices.length,3);else assert.equal(offer.nextChoices,null);prefetched.set(offer.me,offer.nextChoices);assert.equal(offer.choices.length,3);assert.equal(offer.rerollsLeft,3-batch);assert.equal(offer.wordHistory,undefined);assert.equal(new Set(offer.choices.map(word=>wordPools.findIndex(pool=>pool.includes(word)))).size,3);for(const word of offer.choices){assert.ok(wordBank.includes(word),word);assert.ok(!seen.has(word),word);seen.add(word)}}
 }
 assert.equal(seen.size,36);assert.equal((await get(0)).rerollsLeft,0);
 await Promise.all(tokens.map((_,i)=>post(i,'leave')));

@@ -1,19 +1,10 @@
-const list=(text:string)=>text.split('|').map(word=>word.trim()).filter(Boolean);
+import {categoryNames,curatedPools,requestedWords} from './word-data.ts';
+export {categoryNames,requestedWords};
 
-// Keep the requested wording intact. Combination prompts add variety to the same visual style.
-export const requestedWords=list(`穿芭蕾舞裙的霸王龙|在拔河的树懒|戴墨镜的兵马俑|烤羊肉串的奥特曼|做瑜伽的猪|骑独轮车的熊猫|拿大顶的孙悟空|穿西装的唐老鸭|织毛衣的长颈鹿|涂口红的猩猩|痛哭流涕地吃西瓜|怒发冲冠地跳皮筋|翻白眼的小丑抛媚眼|手舞足蹈地挤牙膏|咬牙切齿地吹泡泡糖|兴高采烈地拔牙|边劈叉边弹吉他|满脸嫌弃地撸猫|逃命时系鞋带|恐惧地看着蟑螂飞|确认过眼神|退退退|尊嘟假嘟|City不City|老铁双击666|我太难了|狗带|社死瞬间|芭比Q了|显眼包|画蛇添足|掩耳盗铃|对牛弹琴|拔苗助长|狐假虎威|守株待兔|指鹿为马|杯弓蛇影|鹤立鸡群|盲人摸象|尴尬到脚趾抠地|气到冒烟|怒火中烧|委屈得像受气包|激动得心花怒放|困得头点地|满头问号|笑掉大牙|吓破了胆`);
-
-const characters=list(`霸王龙|树懒|兵马俑|奥特曼|小猪|熊猫|孙悟空|唐老鸭|长颈鹿|猩猩|企鹅|袋鼠|河马|鳄鱼|兔子|狐狸|浣熊|刺猬|北极熊|章鱼|螃蟹|海豹|海象|水豚|小黄鸭|火烈鸟|猫头鹰|孔雀|骆驼|大象|犀牛|狮子|老虎|斑马|小羊|小狗|橘猫|金鱼|海豚|鲨鱼|乌龟|蜗牛|青蛙|蜜蜂|螳螂|独角兽|美人鱼|外星人|机器人|宇航员|雪人|稻草人|吸血鬼|小僵尸|海盗|忍者|哪吒|猪八戒|沙和尚|唐僧|白雪公主|灰姑娘|小红帽|圣诞老人|丘比特|龙王|财神|哆啦A梦|皮卡丘|海绵宝宝|派大星|葫芦娃`);
-const actions=list(`穿芭蕾舞裙|戴墨镜|穿西装|穿婚纱|穿雨衣|戴皇冠|戴假发|穿高跟鞋|背小书包|围着大围巾|戴着游泳圈|戴着花环|敷面膜|涂口红|贴假睫毛|画眉毛|刮胡子|烫头发|做美甲|照镜子臭美|跳芭蕾|跳广场舞|跳街舞|扭秧歌|打太极|做瑜伽|劈叉|倒立|翻跟头|跳绳|跳皮筋|踢毽子|拔河|举杠铃|骑独轮车|骑滑板车|踩滑板|滑旱冰|溜冰|滑雪|冲浪|撑竹筏|坐过山车|坐旋转木马|放风筝|弹吉他|弹钢琴|吹唢呐|拉二胡|敲架子鼓|唱卡拉OK|指挥交响乐|变魔术|抛杂技球|烤羊肉串|摊煎饼|包饺子|揉面团|炒大锅菜|吃火锅|吸珍珠奶茶|吹泡泡糖|舔冰淇淋|偷吃蛋糕|啃西瓜|剥榴莲|织毛衣|缝袜子|熨衣服|晾床单|拖地|刷马桶|洗碗|浇花|修水管|通下水道|扛水泥|开挖掘机|推购物车|摆地摊|送外卖|赶公交|挤地铁|举牌接机|排队买菜|钓鱼|遛狗|铲猫砂|追蝴蝶|追着自己的尾巴|蹲在墙角哭|抱着枕头睡觉|躲在被窝偷吃|趴在桌上补作业|边跑步边吃面|一边打伞一边浇花`);
-
-const idioms=list(`画蛇添足|掩耳盗铃|对牛弹琴|拔苗助长|狐假虎威|守株待兔|指鹿为马|杯弓蛇影|鹤立鸡群|盲人摸象|井底之蛙|刻舟求剑|亡羊补牢|叶公好龙|愚公移山|精卫填海|夸父追日|女娲补天|后羿射日|嫦娥奔月|八仙过海|哪吒闹海|鸡飞狗跳|鸡犬不宁|鸡同鸭讲|兔死狐悲|龙飞凤舞|龙争虎斗|虎头蛇尾|狗急跳墙|鱼跃龙门|瓮中捉鳖|猫哭老鼠|画龙点睛|骑虎难下|如鱼得水|狼吞虎咽|闻鸡起舞|一箭双雕|三头六臂|四脚朝天|五体投地|七手八脚|七嘴八舌|八面威风|九牛一毛|十全十美|手忙脚乱|抓耳挠腮|挤眉弄眼|眉飞色舞|张牙舞爪|捶胸顿足|目瞪口呆|东倒西歪|东张西望|蹑手蹑脚|抱头鼠窜|仰天大笑|垂头丧气|大摇大摆|大腹便便|头重脚轻|汗流浃背|泪如雨下|笑里藏刀|心口不一|心惊肉跳|火冒三丈|怒发冲冠|雪上加霜|火上浇油|水中捞月|海底捞针|大海捞针|竹篮打水|镜花水月|飞蛾扑火|螳臂当车|螳螂捕蝉|坐井观天|缘木求鱼|买椟还珠|自相矛盾|滥竽充数|班门弄斧|悬梁刺股|凿壁偷光|囊萤映雪|负荆请罪|卧薪尝胆|望梅止渴|闻风丧胆|打草惊蛇|顺手牵羊|偷梁换柱|抛砖引玉|一石二鸟|一叶障目|独木难支|水滴石穿|破釜沉舟|愁眉苦脸|龇牙咧嘴|眉开眼笑|翻山越岭|腾云驾雾|乘风破浪|风吹草动|鸟语花香|花好月圆|大鹏展翅|呆若木鸡|汗如雨下|步步高升|天花乱坠|捧腹大笑|咬牙切齿|摇头晃脑|手舞足蹈`);
-const reactions=list(`痛哭流涕地吃西瓜|怒发冲冠地跳皮筋|翻白眼的小丑抛媚眼|手舞足蹈地挤牙膏|咬牙切齿地吹泡泡糖|兴高采烈地拔牙|边劈叉边弹吉他|满脸嫌弃地撸猫|逃命时系鞋带|恐惧地看着蟑螂飞|尴尬到脚趾抠地|气到冒烟|怒火中烧|委屈得像受气包|激动得心花怒放|困得头点地|满头问号|笑掉大牙|吓破了胆|笑到在地上打滚|哭成一个喷泉|气得头发竖起来|惊讶得下巴掉了|馋得口水流成河|累得灵魂出窍|害羞得脸变番茄|冻得牙齿打架|热得脑袋冒蒸汽|紧张得咬手帕|开心得飞起来|失落得长出蘑菇|伤心得淋一场小雨|眼睛变成爱心|眼睛瞪成铜铃|眼冒金星|两眼放光|鼻孔冒烟|耳朵冒火|泪水在眼眶打转|笑得合不拢嘴|嘴硬但眼泪打转|抱着钱包瑟瑟发抖|抱着零食偷偷窃喜|看到账单当场石化|听到放假原地起飞|上班像一条咸鱼|下班像脱缰的野马|减肥时偷偷吃炸鸡|吃柠檬酸到变形|吃辣椒辣到喷火|喝苦药苦成表情包|闻到臭袜子晕倒|剪坏头发欲哭无泪|看到体重秤捂住眼睛|考试时脑袋一片空白|打喷嚏把帽子震飞|憋笑憋成包子脸|打哈欠把嘴巴卡住|吓得抱住路灯|气得跺脚震碎地板|困得站着睡着了|惊喜得把蛋糕扣脸上|悲伤地吹生日蜡烛|严肃地跳兔子舞|流着眼泪切洋葱|边打嗝边唱歌|边哭边吃火锅|笑着笑着假牙飞了|想耍帅却摔了个跟头|偷偷放屁假装看风景|被夸奖后尾巴翘上天|看到闹钟装死|发现没带纸的绝望|手机掉在脸上的痛|刚洗完车就下雨|精心摆拍时蛋糕塌了|用力开门结果是推门|挥手打招呼认错人|把盐当糖放进奶茶|喝水时被笑话呛住|一口咬到冰淇淋掉地|追公交追掉一只鞋|电梯里肚子大叫|自拍被路人抢镜|吃泡面时眼镜起雾|睡醒发现脸上有键盘印|看恐怖片从指缝偷看|偷吃被发现还在嚼|气鼓鼓地给气球打气|兴奋地给仙人掌拥抱|带着哭腔说自己没哭|给猫洗澡像在打仗|给狗吹毛吹成蒲公英|下雨天鞋子进水|在图书馆憋不住笑|一边捂眼一边偷看|找眼镜时眼镜在头上|举着手机到处找手机|最后一口奶茶吸不上来|拆快递拆出套娃`);
-// Familiar meme phrases; avoid depending on a live service or claiming they are current trends.
-const memes=list(`确认过眼神|退退退|尊嘟假嘟|City不City|老铁双击666|我太难了|狗带|社死瞬间|芭比Q了|显眼包|打工人|干饭人|干饭魂|躺平|摆烂|内卷|破防了|蚌埠住了|栓Q|栓动了|绝绝子|奥利给|拿来吧你|真香|真香警告|给我整不会了|小丑竟是我自己|我裂开了|人麻了|CPU烧了|大脑宕机|原地裂开|当场石化|灵魂出窍|原地起飞|大型翻车现场|大型真香现场|大型社死现场|大型认亲现场|人在工位心在外面|人在家中坐锅从天上来|人在囧途|打脸来得太快|笑不活了|笑出鹅叫|笑出猪叫|笑成一团|笑容逐渐消失|笑容逐渐缺德|眼神逐渐呆滞|逐渐失去梦想|弱小可怜又无助|弱小但能吃|猛男落泪|猛男撒娇|仙女落泪|猫猫震惊|狗狗祟祟|猫猫祟祟|鸭梨山大|蓝瘦香菇|柠檬精|吃瓜群众|前排吃瓜|搬个小板凳|端水大师|甩锅大师|背锅侠|工具人|气氛组|气氛终结者|人间清醒|人间大漏勺|社交牛人|社恐现场|话痨附体|戏精上身|表情管理失败|偶像包袱掉了|打扰了告辞|溜了溜了|抱紧大腿|瑟瑟发抖|瑟瑟发抖但不耽误吃|乖巧坐好|一脸懵|一脸无辜|一脸生无可恋|一脸看透一切|你礼貌吗|听我说谢谢你|你是懂我的|你是懂省钱的|你是懂拍照的|你是懂加班的|反向操作|反向带娃|反向减肥|反向充电|反向砍价|这福气给你要不要|我不要你觉得我要我觉得|我的母语是无语|求生欲拉满|仪式感拉满|安全感拉满|战术后仰|战术喝水|战术挠头|战术撤退|蓄力一拳打在棉花上|一个滑铲|一个眼神自己体会|小朋友你是否有很多问号|打不过就加入|我真的会谢|我真的栓Q|精神状态良好|精神状态领先|早八人的怨气|脆皮大学生|特种兵式旅游|班味太重|班味消除术|公园二十分钟|松弛感|偷感很重|窝囊废赛道|水灵灵地出现了|水灵灵地摔倒了|包的|包没问题的|情绪价值拉满|不是哥们|汗流浃背了吧|汗流浃背了老弟|遥遥领先|反向遥遥领先|电子榨菜|互联网嘴替|互联网打工人|万物皆可盘|盘它|来了老弟|安排得明明白白|一顿操作猛如虎|还有这种操作|这谁顶得住|这届队友带不动|队友祭天法力无边|不讲武德|耗子尾汁|年轻人不讲武德|闪电五连鞭|该配合你演出的我|快乐星球|孤勇者|勇敢牛牛不怕困难|可爱到犯规|猫猫能有什么坏心思|小狗能有什么坏心思|今天也是元气满满的一天`);
-
-const scenes=[...requestedWords.slice(0,10),...characters.flatMap(character=>actions.map(action=>`${action}的${character}`))];
-export const wordPools=[...([scenes,idioms,reactions,memes].map(words=>[...new Set(words)]))];
-export const wordBank=[...new Set(wordPools.flat())];
+// Categories are disjoint so each three-choice offer really contains three types.
+const unique=new Set<string>();
+export const wordPools=curatedPools.map(pool=>pool.filter(word=>{if(unique.has(word))return false;unique.add(word);return true}));
+export const wordBank=wordPools.flat();
 function shuffled<T>(items:T[]){const result=[...items],random=crypto.getRandomValues(new Uint32Array(items.length));for(let i=result.length-1;i>0;i--){const j=random[i]%(i+1);[result[i],result[j]]=[result[j],result[i]]}return result}
 
 export function dealWordDecks(playerCount:number,history:string[]=[]){
@@ -21,6 +12,8 @@ export function dealWordDecks(playerCount:number,history:string[]=[]){
  // Unseen words first; when a category is exhausted, reuse its oldest words first.
  const pools=wordPools.map(pool=>shuffled(pool).sort((a,b)=>(seen.get(a)??-1)-(seen.get(b)??-1)));
  function take(category:number){const word=pools[category].find(word=>!used.has(word));if(!word)throw Error('词库不足');used.add(word);return word}
- const decks=Array.from({length:playerCount},(_,player)=>Array.from({length:4},(_,batch)=>shuffled([take(0),take(1+(player+batch)%3),take(1+(player+batch+1)%3)])).flat());
- return {decks,history:[...history.filter(word=>!used.has(word)),...used].slice(-1600)};
+ const categories=shuffled(wordPools.map((_,i)=>i));
+ const decks=Array.from({length:playerCount},(_,player)=>Array.from({length:4},(_,batch)=>shuffled(Array.from({length:3},(_,slot)=>take(categories[(player*12+batch*3+slot)%categories.length])))).flat());
+ // Discard retired prompts from older versions, preserving recent active words.
+ return {decks,history:[...history.filter(word=>unique.has(word)&&!used.has(word)),...used].slice(-1600)};
 }
