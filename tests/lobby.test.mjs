@@ -26,21 +26,21 @@ test('each player returns independently after the shared replay; returns and pol
  ready(r,'c');assert.equal(view(JSON.parse(JSON.stringify(r)),'a',3).canStart,true);
  act(r,'a',{action:'start',duration:60},end);assert.throws(()=>act(r,'b',{action:'return',game},end));assert.throws(()=>act(r,'b',{action:'ready',game,ready:true},end));
 });
-test('only the host can kick, kicked identities cannot rejoin or read, and removal is private',()=>{
+test('only the host can kick; kicked players must explicitly rejoin and become unready',()=>{
  const r=room();assert.throws(()=>act(r,'b',{action:'kick',playerId:'c'}),e=>e.status===403);
  assert.throws(()=>act(r,'a',{action:'kick',playerId:'a'}));
  act(r,'a',{action:'kick',playerId:'b'});assert.equal(r.players.length,2);
- for(const action of ['join','ready','submit','return'])assert.throws(()=>act(r,'b',{action,name:'新名字',game:r.game,ready:true}),e=>e.code==='ROOM_KICKED');
+ for(const action of ['ready','submit','return'])assert.throws(()=>act(r,'b',{action,name:'新名字',game:r.game,ready:true}),e=>e.code==='ROOM_KICKED');
  assert.throws(()=>view(r,'b',0),e=>e.code==='ROOM_KICKED');assert.equal(view(r,'a',0).removed,undefined);
- act(r,'d',{action:'join',name:'新朋友'});assert.equal(view(r,'a',1).canStart,false);
+ act(r,'b',{action:'join',name:'新名字'});assert.equal(view(r,'b',1).phase,'lobby');assert.equal(view(r,'b',1).players.find(p=>p.id===view(r,'b',1).me).ready,false);assert.ok(!r.removed.includes('b'));assert.equal(view(r,'a',1).canStart,false);
 });
 test('midgame kicks keep rotation, previous-player identity and existing drawings intact',()=>{
  const r=room();start(r);const word=r.prompts.b.deck[0];act(r,'b',{action:'submit',game:r.game,round:0,text:word},1);
- act(r,'a',{action:'kick',playerId:'b'},2);assert.equal(r.players.length,3);assert.equal(r.entries[0][1].text,word);
+ act(r,'a',{action:'kick',playerId:'b'},2);assert.throws(()=>act(r,'b',{action:'join',name:'玩家b'},3),e=>e.status===409);assert.ok(r.removed.includes('b'));assert.equal(r.players.length,3);assert.equal(r.entries[0][1].text,word);
  advance(r,60000);assert.equal(view(r,'c',1).previousPlayer.id,'c');
  advance(r,60001);assert.equal(r.entries[1][1].skipped,true);
  advance(r,130000);const state=view(r,'c',1);assert.equal(state.previous.skipped,true);assert.equal(state.previousPlayer.id,'b');assert.equal(state.previousPlayer.secret,undefined);const end=finish(r);
- act(r,'a',{action:'return',game:r.game},end);act(r,'c',{action:'return',game:r.game},end);assert.equal(r.players.length,2);assert.equal(r.phase,'lobby');
+ act(r,'a',{action:'return',game:r.game},end);act(r,'c',{action:'return',game:r.game},end);assert.equal(r.players.length,2);assert.equal(r.phase,'lobby');act(r,'b',{action:'join',name:'玩家b'},end);assert.equal(view(r,'b',3).phase,'lobby');assert.equal(r.players.length,3);
 });
 test('leaving or kicking the last player still in results releases the waiting lobby',()=>{
  for(const action of ['leave','kick']){const r=room(),end=finish(r);for(const id of ['a','b'])act(r,id,{action:'return',game:r.game},end);ready(r,'b');

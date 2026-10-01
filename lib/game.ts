@@ -54,15 +54,17 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
   const index=room.players.findIndex(p=>p.secret===secret);
   const player=room.players[index];
   const action=body.action;
-  checkAccess(room,secret);
   if(action==='join') {
-    if(player){if(player.left){player.ready=false;player.returned=false}player.left=false;return}
+    const kicked=!!player?.kicked||!!room.removed?.includes(secret);
+    if(kicked&&room.phase!=='lobby')throw new GameError('本局还在进行，请等大家返回房间后重新加入。',409);
+    if(player){if(player.left||kicked){player.ready=false;player.returned=false}player.left=false;player.kicked=false;room.removed=room.removed?.filter(s=>s!==secret);return}
     if(room.phase!=='lobby') throw new GameError('游戏已经开始，等朋友下一局再加入吧。',409);
     if(room.players.length>=12) throw new GameError('房间已满，最多 12 人。',409);
     const name=validName(body.name);
     if(room.players.some(p=>p.name===name)) throw new GameError('这个昵称有人用了，换一个吧。');
-    room.players.push({id:crypto.randomUUID(),secret,name});return;
+    room.players.push({id:crypto.randomUUID(),secret,name});room.removed=room.removed?.filter(s=>s!==secret);return;
   }
+  checkAccess(room,secret);
   if(!player) throw new GameError('请重新加入这个房间。',401);
   if(action==='leave') {
     if(room.phase==='lobby') room.players.splice(index,1); else player.left=true;
