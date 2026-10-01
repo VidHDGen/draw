@@ -2,13 +2,13 @@ import {DRAWING_UPLOAD_GRACE_MS} from './drawing-timeout.ts';
 import {dealWordDecks} from './words.ts';
 import {makeReplaySchedule,REPLAY_LEAD_MS} from './replay-clock.ts';
 export type Entry = { kind: 'text' | 'draw'; text?: string; image?: string; replay?: boolean; replayMs?:number; width?:number; height?:number; skipped?: boolean; author: string };
-export type Player = { id: string; name: string; secret: string; left?: boolean; ready?:boolean; returned?:boolean; kicked?:boolean };
-export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number; wordHistory?:string[]; removed?:string[]; drafts?:Record<string,{entry:Entry;savedAt:number}> };
+export type Player = { id: string; name: string; secret: string; left?: boolean; ready?:boolean; returned?:boolean; kicked?:boolean; avatar?:number };
+export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number; wordHistory?:string[]; removed?:string[]; drafts?:Record<string,{entry:Entry;savedAt:number}>; lobbyOrder?:string[] };
 export class GameError extends Error { constructor(message: string, public status = 400, public code?:string) {super(message)} }
 export function kind(round:number):'text'|'draw' { return round % 2 ? 'draw' : 'text' }
 export function advance(room:Room, now=Date.now()) {
   if(room.phase==='reveal'&&!room.replayStartsAt){room.replayStartsAt=now+REPLAY_LEAD_MS;return true}
-  if(room.phase==='reveal'&&room.players.some(p=>!p.left)&&room.players.filter(p=>!p.left).every(p=>p.returned)){room.players=room.players.filter(p=>!p.left);room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;delete room.replayStartsAt;delete room.drafts;return true}
+  if(room.phase==='reveal'&&room.players.some(p=>!p.left)&&room.players.filter(p=>!p.left).every(p=>p.returned)){room.players=room.players.filter(p=>!p.left).sort((a,b)=>(room.lobbyOrder?.indexOf(a.id)??0)-(room.lobbyOrder?.indexOf(b.id)??0));delete room.lobbyOrder;room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;delete room.replayStartsAt;delete room.drafts;return true}
   if(room.phase !== 'play') return false;
   const row = room.entries[room.round];
   let changed = false;
@@ -31,9 +31,9 @@ export function view(room:Room, secret:string, version:number) {
   const offer=room.phase==='play'&&room.round===0?room.prompts?.[me.id]:undefined;
   const previous=room.phase==='play' && room.round>0 ? room.entries[room.round-1][(index-1+room.players.length)%room.players.length] : null;
   const phase=room.phase==='reveal'&&me.returned?'lobby':room.phase;
-  const previousPlayer=room.players.find(p=>p.id===previous?.author);
-  const members=room.players.map((p,i)=>({id:p.id,name:p.name,avatar:i%6,left:!!p.left,ready:!!p.ready,returned:room.phase==='lobby'||!!p.returned,kicked:!!p.kicked,submitted:!!room.entries[room.round]?.[i]}));
-  return {code:room.code,host:room.host,me:me.id,phase,game:room.game,round:room.round,total:room.players.length,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,previousPlayer:previousPlayer?{id:previousPlayer.id,name:previousPlayer.name,avatar:room.players.indexOf(previousPlayer)%6}:null,canStart:room.phase==='lobby'&&room.players.length>=3&&room.players.every(p=>p.id===room.host||p.ready),replaySchedule:phase==='reveal'&&room.replayStartsAt?makeReplaySchedule(room.entries,room.replayStartsAt):null,choices:offer?offer.deck.slice(offer.batch*3,offer.batch*3+3):null,nextChoices:offer&&offer.batch<3?offer.deck.slice((offer.batch+1)*3,(offer.batch+2)*3):null,choiceSet:offer?.batch??0,rerollsLeft:offer?3-offer.batch:0,submitted:!!room.entries[room.round]?.[index],players:phase==='lobby'?members.filter(p=>!p.left):members,albums:phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+r)%room.players.length])})):null};
+  const previousPlayer=room.phase==='play'&&room.round>0?room.players[(index-1+room.players.length)%room.players.length]:undefined;
+  const members=room.players.map((p,i)=>({id:p.id,name:p.name,avatar:p.avatar??i%6,left:!!p.left,ready:!!p.ready,returned:room.phase==='lobby'||!!p.returned,kicked:!!p.kicked,submitted:!!room.entries[room.round]?.[i]}));
+  return {code:room.code,host:room.host,me:me.id,phase,game:room.game,round:room.round,total:room.players.length,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,previousPlayer:previousPlayer?{id:previousPlayer.id,name:previousPlayer.name,avatar:previousPlayer.avatar??room.players.indexOf(previousPlayer)%6}:null,canStart:room.phase==='lobby'&&room.players.length>=3&&room.players.every(p=>p.id===room.host||p.ready),replaySchedule:phase==='reveal'&&room.replayStartsAt?makeReplaySchedule(room.entries,room.replayStartsAt):null,choices:offer?offer.deck.slice(offer.batch*3,offer.batch*3+3):null,nextChoices:offer&&offer.batch<3?offer.deck.slice((offer.batch+1)*3,(offer.batch+2)*3):null,choiceSet:offer?.batch??0,rerollsLeft:offer?3-offer.batch:0,submitted:!!room.entries[room.round]?.[index],players:phase==='lobby'?members.filter(p=>!p.left).sort((a,b)=>(room.lobbyOrder?.indexOf(a.id)??0)-(room.lobbyOrder?.indexOf(b.id)??0)):members,albums:phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+r)%room.players.length])})):null};
 }
 export function act(room:Room, secret:string, body:Record<string,unknown>, now=Date.now()) {
   const index=room.players.findIndex(p=>p.secret===secret);
@@ -97,6 +97,13 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     if(room.phase==='lobby')return;
     if(room.phase!=='reveal')throw new GameError('请先完成这一局。',409);
     if(!room.replayStartsAt||now<makeReplaySchedule(room.entries,room.replayStartsAt).endsAt)throw new GameError('大家正在同步观看回放，请等放映结束。',409);
+    if(!room.lobbyOrder){
+      room.players.forEach((p,i)=>{p.avatar??=i%6});
+      const order=room.players.filter(p=>!p.left).map(p=>p.id),original=order.join(',');
+      for(let i=order.length-1;i>0;i--){const j=crypto.getRandomValues(new Uint32Array(1))[0]%(i+1);[order[i],order[j]]=[order[j],order[i]]}
+      if(order.length>1&&order.join(',')===original)[order[0],order[1]]=[order[1],order[0]];
+      room.lobbyOrder=order;
+    }
     if(!player.returned){player.returned=true;player.ready=false}
     advance(room,now);return;
   }

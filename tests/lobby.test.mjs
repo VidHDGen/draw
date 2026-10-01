@@ -19,10 +19,10 @@ test('each player returns independently after the shared replay; returns and pol
  const r=room(),end=finish(r),game=r.game,plan=view(r,'a',0).replaySchedule;
  assert.throws(()=>act(r,'b',{action:'return',game},end-1),e=>e.status===409);
  act(r,'b',{action:'return',game},end);assert.equal(view(r,'b',1).phase,'lobby');assert.equal(view(r,'a',1).phase,'reveal');assert.deepEqual(view(r,'a',1).replaySchedule,plan);
- ready(r,'b');act(r,'b',{action:'return',game},end);assert.equal(r.players[1].ready,true);
+ ready(r,'b');act(r,'b',{action:'return',game},end);assert.equal(r.players.find(p=>p.id==='b').ready,true);
  act(r,'a',{action:'return',game},end);assert.throws(()=>act(r,'a',{action:'start',duration:60},end),e=>e.status===409);
  assert.equal(view(r,'a',2).players.find(p=>p.id==='c').returned,false);
- act(r,'c',{action:'return',game},end);assert.equal(r.phase,'lobby');assert.equal(r.players[1].ready,true);assert.equal(view(r,'a',3).canStart,false);
+ act(r,'c',{action:'return',game},end);assert.equal(r.phase,'lobby');assert.equal(r.players.find(p=>p.id==='b').ready,true);assert.equal(view(r,'a',3).canStart,false);
  ready(r,'c');assert.equal(view(JSON.parse(JSON.stringify(r)),'a',3).canStart,true);
  act(r,'a',{action:'start',duration:60},end);assert.throws(()=>act(r,'b',{action:'return',game},end));assert.throws(()=>act(r,'b',{action:'ready',game,ready:true},end));
 });
@@ -46,4 +46,17 @@ test('leaving or kicking the last player still in results releases the waiting l
  for(const action of ['leave','kick']){const r=room(),end=finish(r);for(const id of ['a','b'])act(r,id,{action:'return',game:r.game},end);ready(r,'b');
   act(r,action==='kick'?'a':'c',{action,playerId:'c'},end);assert.equal(r.phase,'lobby');assert.equal(r.players.length,2);assert.equal(r.players.find(p=>p.id==='b').ready,true);
  }
+});
+
+
+test('next-game seats shuffle before readiness, remain stable on repeated returns, and preserve replay and avatars',()=>{
+ const r=room(),end=finish(r),game=r.game,old=r.players.map(p=>p.id),plan=view(r,'a',0).replaySchedule;
+ act(r,'b',{action:'return',game},end);const seats=view(r,'b',1).players.map(p=>p.id);
+ assert.notDeepEqual(seats,old);assert.deepEqual([...seats].sort(),[...old].sort());
+ assert.deepEqual(view(r,'a',1).replaySchedule,plan);assert.deepEqual(r.players.map(p=>p.id),old);
+ ready(r,'b');act(r,'b',{action:'return',game},end);assert.deepEqual(view(r,'b',2).players.map(p=>p.id),seats);
+ act(r,'a',{action:'return',game},end);act(r,'c',{action:'return',game},end);
+ assert.deepEqual(r.players.map(p=>p.id),seats);assert.equal(r.host,'a');assert.equal(r.players.find(p=>p.id==='b').ready,true);
+ for(const p of view(r,'a',3).players)assert.equal(p.avatar,old.indexOf(p.id));
+ assert.equal(advance(r,end+1000),false);assert.deepEqual(r.players.map(p=>p.id),seats);
 });
