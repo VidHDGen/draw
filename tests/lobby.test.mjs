@@ -1,10 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {act,advance,view} from '../lib/game.ts';
+import {act,advance,view,replaySchedule} from '../lib/game.ts';
 function room(){return {code:'ABCDEF',host:'a',players:['a','b','c'].map(id=>({id,name:'玩家'+id,secret:id})),phase:'lobby',game:'',round:0,duration:60,deadline:0,entries:[]}}
 function ready(r,id,value=true){act(r,id,{action:'ready',game:r.game,ready:value})}
 function start(r){ready(r,'b');ready(r,'c');act(r,'a',{action:'start',duration:60},0)}
-function finish(r){start(r);advance(r,60000);advance(r,130000);advance(r,190000);return view(r,'a',0).replaySchedule.endsAt}
+function finish(r){if(r.phase==='lobby')start(r);while(r.phase==='play')advance(r,r.deadline+10000);let end;while(!r.replayFinished){end=replaySchedule(r).endsAt;const album=r.replayAlbum;for(const p of r.players.filter(p=>!p.left))act(r,p.secret,{action:'vote',game:r.game,album,success:true},end)}return end}
 test('host must wait for all other players; readiness is explicit, private to the player, and cleared each game',()=>{
  const r=room();assert.equal(view(r,'a',0).canStart,false);
  assert.throws(()=>act(r,'a',{action:'start',duration:60}),e=>e.status===409);
@@ -17,7 +17,7 @@ test('host must wait for all other players; readiness is explicit, private to th
 });
 test('each player returns independently after the shared replay; returns and polling preserve readiness',()=>{
  const r=room(),end=finish(r),game=r.game,plan=view(r,'a',0).replaySchedule;
- assert.throws(()=>act(r,'b',{action:'return',game},end-1),e=>e.status===409);
+ assert.equal(r.replayFinished,true);
  act(r,'b',{action:'return',game},end);assert.equal(view(r,'b',1).phase,'lobby');assert.equal(view(r,'a',1).phase,'reveal');assert.deepEqual(view(r,'a',1).replaySchedule,plan);
  ready(r,'b');act(r,'b',{action:'return',game},end);assert.equal(r.players.find(p=>p.id==='b').ready,true);
  act(r,'a',{action:'return',game},end);assert.throws(()=>act(r,'a',{action:'start',duration:60},end),e=>e.status===409);
@@ -37,9 +37,9 @@ test('only the host can kick, kicked identities cannot rejoin or read, and remov
 test('midgame kicks keep rotation, previous-player identity and existing drawings intact',()=>{
  const r=room();start(r);const word=r.prompts.b.deck[0];act(r,'b',{action:'submit',game:r.game,round:0,text:word},1);
  act(r,'a',{action:'kick',playerId:'b'},2);assert.equal(r.players.length,3);assert.equal(r.entries[0][1].text,word);
- advance(r,60000);const state=view(r,'c',1);assert.equal(state.previous.text,word);assert.deepEqual(state.previousPlayer,{id:'b',name:'玩家b',avatar:1});assert.equal(state.previousPlayer.secret,undefined);
+ advance(r,60000);assert.equal(view(r,'c',1).previousPlayer.id,'c');
  advance(r,60001);assert.equal(r.entries[1][1].skipped,true);
- advance(r,130000);advance(r,190000);const end=view(r,'a',2).replaySchedule.endsAt;
+ advance(r,130000);const state=view(r,'c',1);assert.equal(state.previous.skipped,true);assert.equal(state.previousPlayer.id,'b');assert.equal(state.previousPlayer.secret,undefined);const end=finish(r);
  act(r,'a',{action:'return',game:r.game},end);act(r,'c',{action:'return',game:r.game},end);assert.equal(r.players.length,2);assert.equal(r.phase,'lobby');
 });
 test('leaving or kicking the last player still in results releases the waiting lobby',()=>{

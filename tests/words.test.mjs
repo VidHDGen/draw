@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {wordBank,wordPools,requestedWords,dealWordDecks} from '../lib/words.ts';
 import {pictureWordPages} from '../lib/word-data.ts';
-import {act,view,advance} from '../lib/game.ts';
+import {act,view,advance,replaySchedule} from '../lib/game.ts';
 test('picture-based library includes all six pages and thousands of distinct short prompts',()=>{
  assert.ok(wordBank.length>=3000);
  assert.deepEqual(pictureWordPages.map(page=>page.length),[40,40,40,40,40,40]);
@@ -28,8 +28,8 @@ test('many games rotate exhausted categories without duplicating a current offer
 test('room restart retains word history privately and the next game avoids the prior offers',()=>{
  const r={code:'ABCDEF',host:'a',players:['a','b','c'].map(id=>({id,name:id,secret:id,ready:true})),phase:'lobby',game:'',round:0,duration:60,deadline:0,entries:[]};
  act(r,'a',{action:'start',duration:60},0);const original=[...r.wordHistory];
- advance(r,60000);advance(r,130000);advance(r,190000);
- const end=view(r,'a',0).replaySchedule.endsAt;for(const secret of ['a','b','c'])act(r,secret,{action:'return',game:r.game},end);for(const secret of ['b','c'])act(r,secret,{action:'ready',game:r.game,ready:true},end);
+ while(r.phase==='play')advance(r,r.deadline+10000);let end;while(!r.replayFinished){end=replaySchedule(r).endsAt;const album=r.replayAlbum;for(const secret of ['a','b','c'])act(r,secret,{action:'vote',game:r.game,album,success:true},end)}
+ for(const secret of ['a','b','c'])act(r,secret,{action:'return',game:r.game},end);for(const secret of ['b','c'])act(r,secret,{action:'ready',game:r.game,ready:true},end);
  assert.deepEqual(r.wordHistory,original);act(r,'a',{action:'start',duration:60},1000000);
  assert.ok(Object.values(r.prompts).flatMap(p=>p.deck).every(word=>!original.includes(word)));
  assert.equal(view(r,'a',0).wordHistory,undefined);

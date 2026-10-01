@@ -3,11 +3,23 @@ import {dealWordDecks} from './words.ts';
 import {makeReplaySchedule,REPLAY_LEAD_MS} from './replay-clock.ts';
 export type Entry = { kind: 'text' | 'draw'; text?: string; image?: string; replay?: boolean; replayMs?:number; width?:number; height?:number; skipped?: boolean; author: string };
 export type Player = { id: string; name: string; secret: string; left?: boolean; ready?:boolean; returned?:boolean; kicked?:boolean; avatar?:number };
-export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number; wordHistory?:string[]; removed?:string[]; drafts?:Record<string,{entry:Entry;savedAt:number}>; lobbyOrder?:string[] };
+export type Room = { code: string; host: string; players: Player[]; phase: 'lobby'|'play'|'reveal'; game: string; round: number; duration: number; deadline: number; entries: (Entry|null)[][]; prompts?: Record<string,{deck:string[];batch:number}>; replayStartsAt?:number; wordHistory?:string[]; removed?:string[]; drafts?:Record<string,{entry:Entry;savedAt:number}>; lobbyOrder?:string[]; flow?:'self-draw'; replayAlbum?:number; replayFinished?:boolean; votes?:Record<string,Record<string,boolean>>; verdicts?:{album:number;yes:number;no:number;abstained:number;success:boolean}[] };
 export class GameError extends Error { constructor(message: string, public status = 400, public code?:string) {super(message)} }
 export function kind(round:number):'text'|'draw' { return round % 2 ? 'draw' : 'text' }
+export const VOTE_MS=30000;
+export function relayOffset(room:Room,round:number){return room.flow==='self-draw'?Math.max(0,round-1):round}
+export function replaySchedule(room:Room){return makeReplaySchedule(room.entries,room.replayStartsAt||0,room.flow==='self-draw'?{album:room.replayAlbum||0,selfDraw:true}:undefined)}
 export function advance(room:Room, now=Date.now()) {
   if(room.phase==='reveal'&&!room.replayStartsAt){room.replayStartsAt=now+REPLAY_LEAD_MS;return true}
+  if(room.phase==='reveal'&&room.flow==='self-draw'&&!room.replayFinished){
+    const schedule=replaySchedule(room),album=room.replayAlbum||0,votes=room.votes?.[album]||{},voters=room.players.filter(p=>!p.left);
+    if(now>=schedule.endsAt&&(now>=schedule.endsAt+VOTE_MS||voters.every(p=>typeof votes[p.id]==='boolean'))){
+      const yes=voters.filter(p=>votes[p.id]===true).length,no=voters.filter(p=>votes[p.id]===false).length;
+      room.verdicts??=[];room.verdicts.push({album,yes,no,abstained:voters.length-yes-no,success:yes>no});
+      if(album+1>=room.players.length)room.replayFinished=true;else{room.replayAlbum=album+1;room.replayStartsAt=now+REPLAY_LEAD_MS}
+      return true;
+    }
+  }
   if(room.phase==='reveal'&&room.players.some(p=>!p.left)&&room.players.filter(p=>!p.left).every(p=>p.returned)){room.players=room.players.filter(p=>!p.left).sort((a,b)=>(room.lobbyOrder?.indexOf(a.id)??0)-(room.lobbyOrder?.indexOf(b.id)??0));delete room.lobbyOrder;room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;delete room.replayStartsAt;delete room.drafts;return true}
   if(room.phase !== 'play') return false;
   const row = room.entries[room.round];
@@ -16,7 +28,7 @@ export function advance(room:Room, now=Date.now()) {
   room.players.forEach((p,i)=>{if(!row[i] && (p.left || now>=expires)){row[i]=room.drafts?.[p.id]?.entry??{kind:kind(room.round),author:p.id,skipped:true};changed=true}});
   if(row.filter(Boolean).length===room.players.length){
     delete room.drafts;
-    if(room.round+1>=room.players.length){room.phase='reveal';room.replayStartsAt=now+REPLAY_LEAD_MS}
+    if(room.round+1>=room.entries.length){room.phase='reveal';room.replayStartsAt=now+REPLAY_LEAD_MS}
     else {room.round++;room.deadline=now+room.duration*1000}
     changed=true;
   }
@@ -29,11 +41,14 @@ export function view(room:Room, secret:string, version:number) {
   if(index<0) throw new GameError('请重新加入这个房间。',401);
   const me=room.players[index];
   const offer=room.phase==='play'&&room.round===0?room.prompts?.[me.id]:undefined;
-  const previous=room.phase==='play' && room.round>0 ? room.entries[room.round-1][(index-1+room.players.length)%room.players.length] : null;
+  const previous=room.phase==='play' && room.round>0 ? room.entries[room.round-1][(index-(room.flow==='self-draw'&&room.round===1?0:1)+room.players.length)%room.players.length] : null;
   const phase=room.phase==='reveal'&&me.returned?'lobby':room.phase;
-  const previousPlayer=room.phase==='play'&&room.round>0?room.players[(index-1+room.players.length)%room.players.length]:undefined;
+  const previousPlayer=room.phase==='play'&&room.round>0?room.players[(index-(room.flow==='self-draw'&&room.round===1?0:1)+room.players.length)%room.players.length]:undefined;
+  const schedule=phase==='reveal'&&room.replayStartsAt?replaySchedule(room):null;
+  const votes=room.votes?.[room.replayAlbum||0]||{},voters=room.players.filter(p=>!p.left);
+  const voting=phase==='reveal'&&room.flow==='self-draw'&&!room.replayFinished&&schedule&&Date.now()>=schedule.endsAt?{album:room.replayAlbum||0,endsAt:schedule.endsAt+VOTE_MS,eligible:voters.length,cast:voters.filter(p=>typeof votes[p.id]==='boolean').length,mine:votes[me.id]??null}:null;
   const members=room.players.map((p,i)=>({id:p.id,name:p.name,avatar:p.avatar??i%6,left:!!p.left,ready:!!p.ready,returned:room.phase==='lobby'||!!p.returned,kicked:!!p.kicked,submitted:!!room.entries[room.round]?.[i]}));
-  return {code:room.code,host:room.host,me:me.id,phase,game:room.game,round:room.round,total:room.players.length,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,previousPlayer:previousPlayer?{id:previousPlayer.id,name:previousPlayer.name,avatar:previousPlayer.avatar??room.players.indexOf(previousPlayer)%6}:null,canStart:room.phase==='lobby'&&room.players.length>=3&&room.players.every(p=>p.id===room.host||p.ready),replaySchedule:phase==='reveal'&&room.replayStartsAt?makeReplaySchedule(room.entries,room.replayStartsAt):null,choices:offer?offer.deck.slice(offer.batch*3,offer.batch*3+3):null,nextChoices:offer&&offer.batch<3?offer.deck.slice((offer.batch+1)*3,(offer.batch+2)*3):null,choiceSet:offer?.batch??0,rerollsLeft:offer?3-offer.batch:0,submitted:!!room.entries[room.round]?.[index],players:phase==='lobby'?members.filter(p=>!p.left).sort((a,b)=>(room.lobbyOrder?.indexOf(a.id)??0)-(room.lobbyOrder?.indexOf(b.id)??0)):members,albums:phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+r)%room.players.length])})):null};
+  return {code:room.code,host:room.host,me:me.id,phase,game:room.game,round:room.round,total:room.entries.length||room.players.length,flow:room.flow??'legacy',voting,verdicts:room.verdicts||[],replayFinished:room.flow==='self-draw'?!!room.replayFinished:!!schedule&&Date.now()>=schedule.endsAt,duration:room.duration,deadline:room.deadline,serverNow:Date.now(),version,kind:kind(room.round),previous,previousPlayer:previousPlayer?{id:previousPlayer.id,name:previousPlayer.name,avatar:previousPlayer.avatar??room.players.indexOf(previousPlayer)%6}:null,canStart:room.phase==='lobby'&&room.players.length>=3&&room.players.every(p=>p.id===room.host||p.ready),replaySchedule:schedule,choices:offer?offer.deck.slice(offer.batch*3,offer.batch*3+3):null,nextChoices:offer&&offer.batch<3?offer.deck.slice((offer.batch+1)*3,(offer.batch+2)*3):null,choiceSet:offer?.batch??0,rerollsLeft:offer?3-offer.batch:0,submitted:!!room.entries[room.round]?.[index],players:phase==='lobby'?members.filter(p=>!p.left).sort((a,b)=>(room.lobbyOrder?.indexOf(a.id)??0)-(room.lobbyOrder?.indexOf(b.id)??0)):members,albums:phase==='reveal'?room.players.map((p,i)=>({owner:p.name,entries:room.entries.map((row,r)=>row[(i+relayOffset(room,r))%room.players.length])})):null};
 }
 export function act(room:Room, secret:string, body:Record<string,unknown>, now=Date.now()) {
   const index=room.players.findIndex(p=>p.secret===secret);
@@ -83,7 +98,8 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     delete room.replayStartsAt;delete room.drafts;
     const dealt=dealWordDecks(room.players.length,room.wordHistory);room.wordHistory=dealt.history;
     room.prompts=Object.fromEntries(room.players.map((p,i)=>[p.id,{deck:dealt.decks[i],batch:0}]));
-    room.entries=Array.from({length:room.players.length},()=>Array(room.players.length).fill(null));return;
+    room.flow='self-draw';room.replayAlbum=0;room.replayFinished=false;room.votes={};room.verdicts=[];
+    room.entries=Array.from({length:1+room.players.length+(room.players.length%2)},()=>Array(room.players.length).fill(null));return;
   }
   if(action==='reroll') {
     const offer=room.prompts?.[player.id];
@@ -92,11 +108,19 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     if(offer.batch>=3)throw new GameError('三次换词机会已经用完。',409);
     offer.batch++;return;
   }
+  if(action==='vote'){
+    if(body.game!==room.game||room.phase!=='reveal'||room.flow!=='self-draw'||room.replayFinished||body.album!==(room.replayAlbum||0)||typeof body.success!=='boolean')throw new GameError('这条接龙的投票已经结束。',409);
+    const schedule=replaySchedule(room);
+    if(now<schedule.endsAt||now>=schedule.endsAt+VOTE_MS)throw new GameError('请在本条回放结束后的投票时间内评判。',409);
+    room.votes??={};const votes=room.votes[String(body.album)]??={};
+    if(typeof votes[player.id]==='boolean')return;
+    votes[player.id]=body.success;advance(room,now);return;
+  }
   if(action==='return'||action==='restart') {
     if(action==='return'&&body.game!==room.game)throw new GameError('这局已经结束，正在同步房间。',409);
     if(room.phase==='lobby')return;
     if(room.phase!=='reveal')throw new GameError('请先完成这一局。',409);
-    if(!room.replayStartsAt||now<makeReplaySchedule(room.entries,room.replayStartsAt).endsAt)throw new GameError('大家正在同步观看回放，请等放映结束。',409);
+    if(!room.replayStartsAt||(room.flow==='self-draw'?!room.replayFinished:now<replaySchedule(room).endsAt))throw new GameError('大家正在同步观看回放，请等放映结束。',409);
     if(!room.lobbyOrder){
       room.players.forEach((p,i)=>{p.avatar??=i%6});
       const order=room.players.filter(p=>!p.left).map(p=>p.id),original=order.join(',');

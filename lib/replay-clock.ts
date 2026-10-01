@@ -2,10 +2,10 @@ export const REPLAY_LEAD_MS=5000, INTRO_MS=2400, DOCK_MS=650;
 export type ReplayStep={album:number;step:number;startsAt:number;contentAt:number;drawMs:number;endsAt:number};
 export type ReplaySchedule={startsAt:number;endsAt:number;steps:ReplayStep[]};
 type ReplayEntry={kind:'text'|'draw';skipped?:boolean;replayMs?:number}|null;
-export function makeReplaySchedule(entries:ReplayEntry[][],startsAt:number):ReplaySchedule{
- const steps:ReplayStep[]=[];let cursor=startsAt;const count=entries.length;
- for(let album=0;album<count;album++)for(let step=0;step<count;step++){
-  const entry=entries[step]?.[(album+step)%count];
+export function makeReplaySchedule(entries:ReplayEntry[][],startsAt:number,options?:{album:number;selfDraw:boolean}):ReplaySchedule{
+ const steps:ReplayStep[]=[];let cursor=startsAt;const count=entries[0]?.length||0,rounds=entries.length;
+ for(let album=options?.album??0;album<(options?options.album+1:count);album++)for(let step=0;step<rounds;step++){
+  const entry=entries[step]?.[(album+(options?.selfDraw?Math.max(0,step-1):step))%count];
   const drawMs=entry?.skipped?2200:entry?.kind==='draw'?Math.max(4000,Math.min(18000,entry.replayMs||6000)):3200;
   const contentAt=cursor+INTRO_MS,endsAt=contentAt+drawMs+1200;
   steps.push({album,step,startsAt:cursor,contentAt,drawMs,endsAt});cursor=endsAt;

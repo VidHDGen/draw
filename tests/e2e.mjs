@@ -25,7 +25,7 @@ for(let batch=1;batch<3;batch++)await post(0,'reroll',{game,choiceSet:batch});
 await post(0,'reroll',{game,choiceSet:3},409);
 assert.equal((await get(0)).rerollsLeft,0);assert.equal((await get(1)).rerollsLeft,3);
 await Promise.all(tokens.slice(0,3).map(async(_,i)=>{const offer=await get(i);assert.equal(offer.choices.length,3);assert.equal(offer.prompts,undefined);choicesById.set(offer.me,offer.choices[0]);return post(i,'submit',{game,round:0,text:offer.choices[0]})}));
-state=await get(0);assert.equal(state.round,1);assert.equal(state.albums,null);assert.equal(state.previous.text,choicesById.get(seats[2]));assert.equal(state.previousPlayer.id,seats[2]);assert.equal(state.previousPlayer.name,state.players[2].name);
+state=await get(0);assert.equal(state.round,1);assert.equal(state.albums,null);assert.equal(state.previous.text,choicesById.get(state.me));assert.equal(state.previousPlayer.id,state.me);assert.equal(state.previousPlayer.name,state.players.find(p=>p.id===state.me).name);
 await post(0,'submit',{game,round:0,text:'过期答案'},409);
 await post(0,'submit',{game,round:1,imageKey:'forged'},400);
 const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
@@ -38,21 +38,22 @@ assert.equal((await fetch(imageUrl,{headers:{Authorization:'Bearer '+tokens[0]}}
 assert.equal((await fetch(imageUrl,{headers:{Authorization:'Bearer '+tokens[3]}})).status,401);
 assert.equal((await fetch(imageUrl+'&replay=1',{headers:{Authorization:'Bearer '+tokens[0]}})).status,403);
 await Promise.all(tokens.slice(0,3).map((_,i)=>post(i,'submit',{game,round:2,text:'猜词'+i})));
+await Promise.all(tokens.slice(0,3).map((_,i)=>post(i,'submit',{game,round:3,image,recording})));
+await Promise.all(tokens.slice(0,3).map((_,i)=>post(i,'submit',{game,round:4,text:'猜词'+i})));
 state=await get(0);assert.equal(state.phase,'reveal');assert.equal(state.albums.length,3);
 state.albums.forEach((album,i)=>album.entries.forEach((entry,r)=>{
-  const author=seats[(i+r)%seats.length];
+  const author=seats[(i+Math.max(0,r-1))%seats.length];
   assert.equal(entry.author,author);
-  if(r!==1)assert.equal(entry.text,r===0?choicesById.get(author):'猜词'+tokenIndexById.get(author));
+  if(r%2===0)assert.equal(entry.text,r===0?choicesById.get(author):'猜词'+tokenIndexById.get(author));
 }));
 const replayResponse=await fetch(imageUrl+'&replay=1',{headers:{Authorization:'Bearer '+tokens[0]}});
 assert.equal(replayResponse.status,200);assert.deepEqual(await replayResponse.json(),recording);
 assert.equal((await fetch(imageUrl+'&replay=1',{headers:{Authorization:'Bearer '+tokens[3]}})).status,401);
-const schedule=state.replaySchedule;assert.equal(schedule.steps.length,9);
+const schedule=state.replaySchedule;assert.equal(schedule.steps.length,5);
 for(const player of [1,2])assert.deepEqual((await get(player)).replaySchedule,schedule);
 await post(1,'return',{game},409);await post(0,'return',{game},409);
-console.log('PASS: all three players share one replay schedule; early restart rejected. Waiting for automatic replay to finish.');
-while(Date.now()<schedule.endsAt+500)await new Promise(resolve=>setTimeout(resolve,Math.min(1000,schedule.endsAt+500-Date.now())));
-assert.deepEqual((await get(0)).replaySchedule,schedule);
+for(let album=0;album<3;album++){const current=(await get(0)).replaySchedule;for(const player of [1,2])assert.deepEqual((await get(player)).replaySchedule,current);while(Date.now()<current.endsAt+100)await new Promise(resolve=>setTimeout(resolve,Math.min(1000,current.endsAt+100-Date.now())));const voting=await get(0);assert.equal(voting.voting.album,album);await Promise.all([0,1,2].map(i=>post(i,'vote',{game,album,success:i!==2})));state=await get(0);assert.equal(state.verdicts[album].yes,2);assert.equal(state.verdicts[album].success,true);console.log('PASS: synchronized replay and majority vote for chain '+(album+1));}
+assert.equal(state.replayFinished,true);
 state=await post(1,'return',{game});assert.equal(state.phase,'lobby');assert.equal((await get(0)).phase,'reveal');
 await post(1,'ready',{game,ready:true});await post(1,'return',{game});assert.equal((await get(1)).players.find(p=>p.id===joined[0].me).ready,true);
 await post(0,'return',{game});await post(0,'start',{duration:60},409);
@@ -62,6 +63,6 @@ await post(1,'ready',{game,ready:true});assert.equal((await get(0)).canStart,tru
 const extra=await post(3,'join',{name:'待移出的测试玩家'});await post(1,'kick',{playerId:extra.me},403);await post(0,'kick',{playerId:extra.me});
 assert.equal((await get(3,403)).code,'ROOM_KICKED');await post(3,'join',{name:'尝试重新加入'},403);assert.equal((await fetch(imageUrl,{headers:{Authorization:'Bearer '+tokens[3]}})).status,403);
 state=await post(0,'start',{duration:60});assert.equal(state.phase,'play');assert.ok(state.players.every(p=>!p.ready));await post(1,'ready',{game,ready:true},409);
-await post(0,'leave');state=await get(1);assert.equal(state.host,seats[1]);assert.equal(state.players.filter(p=>!p.left).length,2);
+const nextHost=state.players.find(p=>p.id!==state.host).id;await post(0,'leave');state=await get(1);assert.equal(state.host,nextHost);assert.equal(state.players.filter(p=>!p.left).length,2);
 console.log('PASS: concurrent 3-player full game, rotation, image + stroke replay storage, three rerolls, answer isolation, auth, stale writes, individual return, readiness gating, host-only kicks, kicked identity rejection, host transfer.');
 console.log('QA_ROOM='+code);
