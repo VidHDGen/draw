@@ -38,8 +38,6 @@ assert.equal((await fetch(imageUrl,{headers:{Authorization:'Bearer '+tokens[0]}}
 assert.equal((await fetch(imageUrl,{headers:{Authorization:'Bearer '+tokens[3]}})).status,401);
 assert.equal((await fetch(imageUrl+'&replay=1',{headers:{Authorization:'Bearer '+tokens[0]}})).status,403);
 await Promise.all(tokens.slice(0,3).map((_,i)=>post(i,'submit',{game,round:2,text:'猜词'+i})));
-await Promise.all(tokens.slice(0,3).map((_,i)=>post(i,'submit',{game,round:3,image,recording})));
-await Promise.all(tokens.slice(0,3).map((_,i)=>post(i,'submit',{game,round:4,text:'猜词'+i})));
 state=await get(0);assert.equal(state.phase,'reveal');assert.equal(state.albums.length,3);
 state.albums.forEach((album,i)=>album.entries.forEach((entry,r)=>{
   const author=seats[(i+Math.max(0,r-1))%seats.length];
@@ -49,7 +47,7 @@ state.albums.forEach((album,i)=>album.entries.forEach((entry,r)=>{
 const replayResponse=await fetch(imageUrl+'&replay=1',{headers:{Authorization:'Bearer '+tokens[0]}});
 assert.equal(replayResponse.status,200);assert.deepEqual(await replayResponse.json(),recording);
 assert.equal((await fetch(imageUrl+'&replay=1',{headers:{Authorization:'Bearer '+tokens[3]}})).status,401);
-const schedule=state.replaySchedule;assert.equal(schedule.steps.length,5);
+const schedule=state.replaySchedule;assert.equal(schedule.steps.length,3);
 for(const player of [1,2])assert.deepEqual((await get(player)).replaySchedule,schedule);
 await post(1,'return',{game},409);await post(0,'return',{game},409);
 for(let album=0;album<3;album++){const current=(await get(0)).replaySchedule;for(const player of [1,2])assert.deepEqual((await get(player)).replaySchedule,current);while(Date.now()<current.endsAt+100)await new Promise(resolve=>setTimeout(resolve,Math.min(1000,current.endsAt+100-Date.now())));const voting=await get(0);assert.equal(voting.voting.album,album);await Promise.all([0,1,2].map(i=>post(i,'vote',{game,album,success:i!==2})));state=await get(0);assert.equal(state.verdicts[album].yes,2);assert.equal(state.verdicts[album].success,true);console.log('PASS: synchronized replay and majority vote for chain '+(album+1));}

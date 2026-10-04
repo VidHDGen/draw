@@ -101,7 +101,7 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     const dealt=dealWordDecks(room.players.length,room.wordHistory);room.wordHistory=dealt.history;
     room.prompts=Object.fromEntries(room.players.map((p,i)=>[p.id,{deck:dealt.decks[i],batch:0}]));
     room.flow='self-draw';room.replayAlbum=0;room.replayFinished=false;room.votes={};room.verdicts=[];
-    room.entries=Array.from({length:1+room.players.length+(room.players.length%2)},()=>Array(room.players.length).fill(null));return;
+    room.entries=Array.from({length:1+room.players.length-(room.players.length%2)},()=>Array(room.players.length).fill(null));return;
   }
   if(action==='reroll') {
     const offer=room.prompts?.[player.id];

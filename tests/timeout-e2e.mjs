@@ -30,8 +30,6 @@ const savedKey=state.previous.image;
 assert.equal((await fetch(base+'/api/drawing?code='+code+'&key='+encodeURIComponent(savedKey),{headers:{Authorization:'Bearer '+tokens[1]}})).status,200);
 await post(0,'draft',{game,round:1,image,recording:first},409);
 for(let i=0;i<3;i++)await post(i,'submit',{game,round:2,text:'自动交卷成功'});
-for(let i=0;i<3;i++)await post(i,'submit',{game,round:3,image,recording:first});
-for(let i=0;i<3;i++)await post(i,'submit',{game,round:4,text:'最后猜词'});
 state=await get(0);assert.equal(state.phase,'reveal');
 for(let i=0;i<2;i++){
  const entry=state.albums.flatMap(a=>a.entries).find(e=>e.kind==='draw'&&e.author===ids[i]);assert.ok(entry?.image&&!entry.skipped);
