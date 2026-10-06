@@ -42,7 +42,7 @@ export async function POST(request:Request){const receivedAt=Date.now();try{
     if(!match)throw new GameError('画作格式错误，请重新提交。');
     let bytes:Uint8Array;try{bytes=Uint8Array.from(atob(match[1]),c=>c.charCodeAt(0))}catch{throw new GameError('画作格式错误。')}
     const dv=new DataView(bytes.buffer);
-    if(bytes.length<24||bytes.length>440000||dv.getUint32(0)!==0x89504e47||dv.getUint32(4)!==0x0d0a1a0a||dv.getUint32(16)>1600||dv.getUint32(20)>1200)throw new GameError('画作尺寸不正确，请重试。');
+    if(bytes.length<24||bytes.length>440000||dv.getUint32(0)!==0x89504e47||dv.getUint32(4)!==0x0d0a1a0a||dv.getUint32(8)!==13||dv.getUint32(12)!==0x49484452||dv.getUint32(16)<1||dv.getUint32(20)<1||dv.getUint32(16)>1600||dv.getUint32(20)>1200)throw new GameError('画作尺寸不正确，请重试。');
     body.boardWidth=dv.getUint32(16);body.boardHeight=dv.getUint32(20);
     const key=`${code}/${room.game}/${room.round}/${player.id}/${crypto.randomUUID()}.png`;
     if(body.recording!==undefined){

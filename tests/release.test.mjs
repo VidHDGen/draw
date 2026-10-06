@@ -1,0 +1,7 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {act,view} from '../lib/game.ts';
+function room(){return {code:'ABCDEF',host:'a',players:['a','b','c'].map(id=>({id,secret:id,name:id,ready:true})),phase:'lobby',game:'',round:0,duration:60,deadline:0,entries:[]}}
+test('departed players lose room and drawing access until explicitly rejoining',()=>{const r=room();act(r,'a',{action:'start',duration:60},1);act(r,'b',{action:'leave'},2);assert.throws(()=>view(r,'b',0),e=>e.status===401);act(r,'b',{action:'join',name:'b'},3);assert.equal(view(r,'b',0).phase,'play');assert.equal(r.players[1].ready,false)});
+test('all players leaving resets a running room and the next join gets a working host',()=>{const r=room();act(r,'a',{action:'start',duration:60},1);for(const id of ['a','b','c'])act(r,id,{action:'leave'},2);assert.equal(r.phase,'lobby');assert.equal(r.entries.length,0);assert.equal(r.players.length,0);act(r,'d',{action:'join',name:'d'},3);assert.equal(r.host,r.players[0].id);assert.equal(view(r,'d',0).host,view(r,'d',0).me)});
+test('removing a lobby member preserves remaining avatars and does not reuse the host identity',()=>{for(const action of ['kick','leave']){const r=room();const old=view(r,'c',0).players.find(p=>p.id==='c').avatar;act(r,action==='kick'?'a':'b',{action,playerId:'b'},1);assert.equal(view(r,'c',1).players.find(p=>p.id==='c').avatar,old)}});

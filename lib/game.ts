@@ -10,6 +10,7 @@ export const VOTE_MS=30000;
 export function relayOffset(room:Room,round:number){return room.flow==='self-draw'?Math.max(0,round-1):round}
 export function replaySchedule(room:Room){return makeReplaySchedule(room.entries,room.replayStartsAt||0,room.flow==='self-draw'?{album:room.replayAlbum||0,selfDraw:true}:undefined)}
 export function advance(room:Room, now=Date.now()) {
+  if(room.phase!=='lobby'&&room.players.every(p=>p.left)){room.players=[];room.host='';room.phase='lobby';room.round=0;room.entries=[];delete room.prompts;delete room.replayStartsAt;delete room.drafts;delete room.lobbyOrder;return true}
   if(room.phase==='reveal'&&!room.replayStartsAt){room.replayStartsAt=now+REPLAY_LEAD_MS;return true}
   if(room.phase==='reveal'&&room.flow==='self-draw'&&!room.replayFinished){
     const schedule=replaySchedule(room),album=room.replayAlbum||0,votes=room.votes?.[album]||{},voters=room.players.filter(p=>!p.left);
@@ -40,6 +41,7 @@ export function view(room:Room, secret:string, version:number) {
   const index=room.players.findIndex(p=>p.secret===secret);
   if(index<0) throw new GameError('请重新加入这个房间。',401);
   const me=room.players[index];
+  if(me.left)throw new GameError('你已离开房间，请重新加入。',401);
   const offer=room.phase==='play'&&room.round===0?room.prompts?.[me.id]:undefined;
   const previous=room.phase==='play' && room.round>0 ? room.entries[room.round-1][(index-(room.flow==='self-draw'&&room.round===1?0:1)+room.players.length)%room.players.length] : null;
   const phase=room.phase==='reveal'&&me.returned?'lobby':room.phase;
@@ -62,12 +64,12 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     if(room.players.length>=12) throw new GameError('房间已满，最多 12 人。',409);
     const name=validName(body.name);
     if(room.players.some(p=>p.name===name)) throw new GameError('这个昵称有人用了，换一个吧。');
-    room.players.push({id:crypto.randomUUID(),secret,name});room.removed=room.removed?.filter(s=>s!==secret);return;
+    const id=crypto.randomUUID(),used=new Set(room.players.map((p,i)=>p.avatar??i%6));const avatar=[0,1,2,3,4,5].find(a=>!used.has(a))??room.players.length%6;room.players.push({id,secret,name,avatar});if(!room.host)room.host=id;room.removed=room.removed?.filter(s=>s!==secret);return;
   }
   checkAccess(room,secret);
   if(!player) throw new GameError('请重新加入这个房间。',401);
   if(action==='leave') {
-    if(room.phase==='lobby') room.players.splice(index,1); else player.left=true;
+    if(room.phase==='lobby'){room.players.forEach((p,i)=>{p.avatar??=i%6});room.players.splice(index,1);} else player.left=true;
     if(room.host===player.id) room.host=room.players.find(p=>!p.left)?.id || '';
     advance(room,now);return;
   }
@@ -78,7 +80,7 @@ export function act(room:Room, secret:string, body:Record<string,unknown>, now=D
     const target=room.players.find(p=>p.id===body.playerId&&!p.left);
     if(!target)throw new GameError('这位玩家已经离开房间。',404);
     room.removed=[...(room.removed||[]),target.secret];target.ready=false;target.left=true;target.kicked=true;
-    if(room.phase==='lobby')room.players=room.players.filter(p=>p.id!==target.id);
+    if(room.phase==='lobby'){room.players.forEach((p,i)=>{p.avatar??=i%6});room.players=room.players.filter(p=>p.id!==target.id);}
     advance(room,now);return;
   }
   if(action==='ready') {
